@@ -1,8 +1,27 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Crop, Sun, Contrast, Pencil, Save, RotateCcw, Download, Sparkles, Loader2, LineChart, Plus, ChevronLeft, ChevronRight, CheckCircle2 } from 'lucide-react';
+import { X, Crop, Sun, Contrast, Pencil, Save, RotateCcw, Download, Sparkles, Loader2, LineChart, Plus, ChevronLeft, ChevronRight, CheckCircle2, Type, SlidersHorizontal, Palette, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { recreateFigure, generateGraph } from '../services/geminiService';
+
+interface TextAnnotation {
+  id: string;
+  x: number;
+  y: number;
+  text: string;
+  color: string;
+  size: number;
+}
+
+interface FigureAdjustments {
+  brightness: number;
+  contrast: number;
+  saturate: number;
+  red: number;
+  green: number;
+  blue: number;
+  gamma: number;
+}
 
 interface FigureToEdit {
   id: string;
@@ -22,10 +41,9 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
   const [currentIndex, setCurrentIndex] = useState(0);
   const currentFigure = figures[currentIndex];
   
-  const [brightness, setBrightness] = useState(100);
-  const [contrast, setContrast] = useState(100);
+  const [adjustments, setAdjustments] = useState<Record<string, FigureAdjustments>>({});
   const [color, setColor] = useState('#4f46e5');
-  const [mode, setMode] = useState<'view' | 'crop' | 'draw' | 'graph'>('view');
+  const [mode, setMode] = useState<'view' | 'crop' | 'draw' | 'graph' | 'text' | 'adjust'>('view');
   const [isDrawing, setIsDrawing] = useState(false);
   const [isRecreating, setIsRecreating] = useState(false);
   const [isGeneratingGraph, setIsGeneratingGraph] = useState(false);
@@ -34,11 +52,47 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
   const containerRef = useRef<HTMLDivElement>(null);
   const [cropRect, setCropRect] = useState<{ x: number, y: number, w: number, h: number } | null>(null);
   const [isCropping, setIsCropping] = useState(false);
+  const [annotations, setAnnotations] = useState<Record<string, TextAnnotation[]>>({});
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState<string>('');
 
   // Store edited versions of each figure
   const [editedSrcs, setEditedSrcs] = useState<Record<string, string>>({});
 
+  const currentAnnotations = annotations[currentFigure.id] || [];
+  const currentAdj = adjustments[currentFigure.id] || {
+    brightness: 100,
+    contrast: 100,
+    saturate: 100,
+    red: 100,
+    green: 100,
+    blue: 100,
+    gamma: 1
+  };
+
   useEffect(() => {
+    renderCanvas();
+  }, [currentIndex, editedSrcs, adjustments, currentAnnotations, selectedAnnotationId]);
+
+  const updateAdjustment = (key: keyof FigureAdjustments, value: number) => {
+    setAdjustments(prev => ({
+      ...prev,
+      [currentFigure.id]: {
+        ...(prev[currentFigure.id] || {
+          brightness: 100,
+          contrast: 100,
+          saturate: 100,
+          red: 100,
+          green: 100,
+          blue: 100,
+          gamma: 1
+        }),
+        [key]: value
+      }
+    }));
+  };
+
+  const renderCanvas = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -48,32 +102,121 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
     img.onload = () => {
       canvas.width = img.width;
       canvas.height = img.height;
-      ctx.filter = `brightness(${brightness}%) contrast(${contrast}%)`;
-      ctx.drawImage(img, 0, 0);
-    };
-    img.src = editedSrcs[currentFigure.id] || currentFigure.src;
-  }, [currentIndex, editedSrcs]);
+      
+      const adj = adjustments[currentFigure.id] || {
+        brightness: 100,
+        contrast: 100,
+        saturate: 100,
+        red: 100,
+        green: 100,
+        blue: 100,
+        gamma: 1
+      };
 
-  const applyFilters = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const img = new Image();
-    img.onload = () => {
+      // Apply filters
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.filter = `brightness(${brightness}%) contrast(${contrast}%)`;
+      ctx.filter = `brightness(${adj.brightness}%) contrast(${adj.contrast}%) saturate(${adj.saturate}%)`;
       ctx.drawImage(img, 0, 0);
+
+      // Manual Color Balance & Gamma (Curves)
+      if (adj.red !== 100 || adj.green !== 100 || adj.blue !== 100 || adj.gamma !== 1) {
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        for (let i = 0; i < data.length; i += 4) {
+          data[i] = Math.min(255, data[i] * (adj.red / 100));
+          data[i+1] = Math.min(255, data[i+1] * (adj.green / 100));
+          data[i+2] = Math.min(255, data[i+2] * (adj.blue / 100));
+          
+          if (adj.gamma !== 1) {
+            data[i] = 255 * Math.pow(data[i] / 255, 1 / adj.gamma);
+            data[i+1] = 255 * Math.pow(data[i+1] / 255, 1 / adj.gamma);
+            data[i+2] = 255 * Math.pow(data[i+2] / 255, 1 / adj.gamma);
+          }
+        }
+        ctx.putImageData(imageData, 0, 0);
+      }
+
+      // Draw Annotations
+      const currentAnns = annotations[currentFigure.id] || [];
+      currentAnns.forEach(ann => {
+        ctx.font = `bold ${ann.size}px Inter, sans-serif`;
+        ctx.fillStyle = ann.color;
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = ann.size / 8;
+        ctx.strokeText(ann.text, ann.x, ann.y);
+        ctx.fillText(ann.text, ann.x, ann.y);
+        
+        if (selectedAnnotationId === ann.id) {
+          ctx.strokeStyle = '#4f46e5';
+          ctx.lineWidth = 2;
+          const metrics = ctx.measureText(ann.text);
+          ctx.strokeRect(ann.x - 5, ann.y - ann.size, metrics.width + 10, ann.size + 10);
+        }
+      });
     };
     img.src = editedSrcs[currentFigure.id] || currentFigure.src;
   };
 
-  useEffect(() => {
-    if (mode === 'view') {
-      applyFilters();
+  const handleCanvasClick = (e: React.MouseEvent) => {
+    if (mode !== 'text') return;
+    
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+
+    // Check if clicked on existing annotation
+    const clickedAnn = currentAnnotations.find(ann => {
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return false;
+        ctx.font = `bold ${ann.size}px Inter, sans-serif`;
+        const metrics = ctx.measureText(ann.text);
+        return x >= ann.x && x <= ann.x + metrics.width && y >= ann.y - ann.size && y <= ann.y;
+    });
+
+    if (clickedAnn) {
+        setSelectedAnnotationId(clickedAnn.id);
+        setEditingText(clickedAnn.text);
+    } else {
+        const newAnn: TextAnnotation = {
+            id: Math.random().toString(36).substr(2, 9),
+            x,
+            y,
+            text: 'New Label',
+            color: color,
+            size: 24
+        };
+        setAnnotations(prev => ({
+            ...prev,
+            [currentFigure.id]: [...(prev[currentFigure.id] || []), newAnn]
+        }));
+        setSelectedAnnotationId(newAnn.id);
+        setEditingText('New Label');
     }
-  }, [brightness, contrast, mode]);
+  };
+
+  const updateSelectedAnnotation = (updates: Partial<TextAnnotation>) => {
+    if (!selectedAnnotationId) return;
+    setAnnotations(prev => ({
+        ...prev,
+        [currentFigure.id]: (prev[currentFigure.id] || []).map(ann => 
+            ann.id === selectedAnnotationId ? { ...ann, ...updates } : ann
+        )
+    }));
+  };
+
+  const deleteSelectedAnnotation = () => {
+    if (!selectedAnnotationId) return;
+    setAnnotations(prev => ({
+        ...prev,
+        [currentFigure.id]: (prev[currentFigure.id] || []).filter(ann => ann.id !== selectedAnnotationId)
+    }));
+    setSelectedAnnotationId(null);
+  };
 
   const handleMagicRecreate = async (all = false) => {
     setIsRecreating(true);
@@ -85,28 +228,14 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
         const srcToUse = updates[fig.id] || fig.src;
         const newSrc = await recreateFigure(srcToUse, fig.alt);
         updates[fig.id] = newSrc;
-        
-        if (!all) {
-          // Update canvas if single
-          const canvas = canvasRef.current;
-          if (canvas) {
-            const img = new Image();
-            img.onload = () => {
-              canvas.width = img.width;
-              canvas.height = img.height;
-              const ctx = canvas.getContext('2d');
-              if (ctx) {
-                ctx.filter = 'none';
-                ctx.drawImage(img, 0, 0);
-                setBrightness(100);
-                setContrast(100);
-              }
-            };
-            img.src = newSrc;
-          }
-        }
       }
       setEditedSrcs(updates);
+      // Reset adjustments for recreated figures as they are now "clean"
+      const newAdjs = { ...adjustments };
+      targets.forEach(fig => {
+        newAdjs[fig.id] = { brightness: 100, contrast: 100, saturate: 100, red: 100, green: 100, blue: 100, gamma: 1 };
+      });
+      setAdjustments(newAdjs);
     } catch (error) {
       console.error('Magic recreate failed:', error);
       alert('Failed to recreate figure(s). Please try again.');
@@ -123,24 +252,12 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
     setIsGeneratingGraph(true);
     try {
       const newSrc = await generateGraph(equations);
-      
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const img = new Image();
-      img.onload = () => {
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.filter = 'none';
-          ctx.drawImage(img, 0, 0);
-          setBrightness(100);
-          setContrast(100);
-          setMode('view');
-        }
-      };
-      img.src = newSrc;
       setEditedSrcs(prev => ({ ...prev, [currentFigure.id]: newSrc }));
+      setAdjustments(prev => ({
+        ...prev,
+        [currentFigure.id]: { brightness: 100, contrast: 100, saturate: 100, red: 100, green: 100, blue: 100, gamma: 1 }
+      }));
+      setMode('view');
     } catch (error) {
       console.error('Graph generation failed:', error);
       alert('Failed to generate graph. Please try again.');
@@ -150,57 +267,21 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
   };
 
   const switchToSource = (newSource: string) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const img = new Image();
-    img.onload = () => {
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.filter = 'none';
-        ctx.drawImage(img, 0, 0);
-        setBrightness(100);
-        setContrast(100);
-      }
-    };
-    img.src = newSource;
     setEditedSrcs(prev => ({ ...prev, [currentFigure.id]: newSource }));
+    setAdjustments(prev => ({
+      ...prev,
+      [currentFigure.id]: { brightness: 100, contrast: 100, saturate: 100, red: 100, green: 100, blue: 100, gamma: 1 }
+    }));
   };
 
   const applyFiltersToAll = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    
-    // Create a temporary canvas to apply filters to each image
-    const tempCanvas = document.createElement('canvas');
-    const tempCtx = tempCanvas.getContext('2d');
-    if (!tempCtx) return;
-
-    const updates: Record<string, string> = { ...editedSrcs };
-    
-    const processAll = async () => {
-      for (const fig of figures) {
-        const img = new Image();
-        const srcToUse = updates[fig.id] || fig.src;
-        
-        await new Promise((resolve) => {
-          img.onload = () => {
-            tempCanvas.width = img.width;
-            tempCanvas.height = img.height;
-            tempCtx.filter = `brightness(${brightness}%) contrast(${contrast}%)`;
-            tempCtx.drawImage(img, 0, 0);
-            updates[fig.id] = tempCanvas.toDataURL('image/png');
-            resolve(null);
-          };
-          img.src = srcToUse;
-        });
-      }
-      setEditedSrcs(updates);
-      alert('Filters applied to all selected figures.');
-    };
-    
-    processAll();
+    const newAdjs = { ...adjustments };
+    const current = currentAdj;
+    figures.forEach(fig => {
+      newAdjs[fig.id] = { ...current };
+    });
+    setAdjustments(newAdjs);
+    alert('Adjustments applied to all selected figures.');
   };
 
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
@@ -310,12 +391,63 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
     setCropRect(null);
   };
 
-  const handleSave = () => {
-    const finalUpdates = figures.map(fig => ({
-      figureId: fig.id,
-      pageIndex: fig.pageIndex,
-      newSrc: editedSrcs[fig.id] || fig.src
-    }));
+  const handleSave = async () => {
+    // We need to bake all changes for all figures
+    const finalUpdates = [];
+    const tempCanvas = document.createElement('canvas');
+    const tempCtx = tempCanvas.getContext('2d');
+    if (!tempCtx) return;
+
+    for (const fig of figures) {
+      const img = new Image();
+      const src = editedSrcs[fig.id] || fig.src;
+      const adj = adjustments[fig.id] || { brightness: 100, contrast: 100, saturate: 100, red: 100, green: 100, blue: 100, gamma: 1 };
+      const anns = annotations[fig.id] || [];
+
+      const bakedSrc = await new Promise<string>((resolve) => {
+        img.onload = () => {
+          tempCanvas.width = img.width;
+          tempCanvas.height = img.height;
+          tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
+          tempCtx.filter = `brightness(${adj.brightness}%) contrast(${adj.contrast}%) saturate(${adj.saturate}%)`;
+          tempCtx.drawImage(img, 0, 0);
+
+          if (adj.red !== 100 || adj.green !== 100 || adj.blue !== 100 || adj.gamma !== 1) {
+            const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+              data[i] = Math.min(255, data[i] * (adj.red / 100));
+              data[i+1] = Math.min(255, data[i+1] * (adj.green / 100));
+              data[i+2] = Math.min(255, data[i+2] * (adj.blue / 100));
+              if (adj.gamma !== 1) {
+                data[i] = 255 * Math.pow(data[i] / 255, 1 / adj.gamma);
+                data[i+1] = 255 * Math.pow(data[i+1] / 255, 1 / adj.gamma);
+                data[i+2] = 255 * Math.pow(data[i+2] / 255, 1 / adj.gamma);
+              }
+            }
+            tempCtx.putImageData(imageData, 0, 0);
+          }
+
+          anns.forEach(ann => {
+            tempCtx.font = `bold ${ann.size}px Inter, sans-serif`;
+            tempCtx.fillStyle = ann.color;
+            tempCtx.strokeStyle = 'white';
+            tempCtx.lineWidth = ann.size / 8;
+            tempCtx.strokeText(ann.text, ann.x, ann.y);
+            tempCtx.fillText(ann.text, ann.x, ann.y);
+          });
+          resolve(tempCanvas.toDataURL('image/png'));
+        };
+        img.src = src;
+      });
+
+      finalUpdates.push({
+        figureId: fig.id,
+        pageIndex: fig.pageIndex,
+        newSrc: bakedSrc
+      });
+    }
+
     onSave(finalUpdates);
     onClose();
   };
@@ -450,13 +582,20 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
 
             <section>
               <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Tools</h3>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <button 
                   onClick={() => setMode('view')}
                   className={`p-3 rounded-xl flex flex-col items-center gap-2 transition-all ${mode === 'view' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-100 hover:border-slate-300'}`}
                 >
                   <RotateCcw className="w-5 h-5" />
                   <span className="text-[9px] font-bold">Reset</span>
+                </button>
+                <button 
+                  onClick={() => setMode('adjust')}
+                  className={`p-3 rounded-xl flex flex-col items-center gap-2 transition-all ${mode === 'adjust' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-100 hover:border-slate-300'}`}
+                >
+                  <SlidersHorizontal className="w-5 h-5" />
+                  <span className="text-[9px] font-bold">Adjust</span>
                 </button>
                 <button 
                   onClick={() => setMode('crop')}
@@ -473,6 +612,13 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
                   <span className="text-[9px] font-bold">Draw</span>
                 </button>
                 <button 
+                  onClick={() => setMode('text')}
+                  className={`p-3 rounded-xl flex flex-col items-center gap-2 transition-all ${mode === 'text' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-100 hover:border-slate-300'}`}
+                >
+                  <Type className="w-5 h-5" />
+                  <span className="text-[9px] font-bold">Text</span>
+                </button>
+                <button 
                   onClick={() => setMode('graph')}
                   className={`p-3 rounded-xl flex flex-col items-center gap-2 transition-all ${mode === 'graph' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-100 hover:border-slate-300'}`}
                 >
@@ -482,24 +628,104 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
               </div>
             </section>
 
-            {mode === 'graph' && (
+            {mode === 'text' && (
               <section className="space-y-4">
-                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Plot Equations</h3>
-                <div className="space-y-3">
-                  <textarea
-                    value={equations}
-                    onChange={(e) => setEquations(e.target.value)}
-                    placeholder="e.g., y = x^2, y = sin(x)"
-                    className="w-full h-32 p-4 bg-white border border-slate-200 rounded-2xl text-sm font-mono focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none resize-none"
-                  />
-                  <button
-                    onClick={handleGenerateGraph}
-                    disabled={isGeneratingGraph}
-                    className="w-full py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                  >
-                    {isGeneratingGraph ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                    Generate Plot
-                  </button>
+                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Text Annotation</h3>
+                {selectedAnnotationId ? (
+                  <div className="space-y-3">
+                    <input
+                      type="text"
+                      value={editingText}
+                      onChange={(e) => {
+                        setEditingText(e.target.value);
+                        updateSelectedAnnotation({ text: e.target.value });
+                      }}
+                      className="w-full p-2 bg-white border border-slate-200 rounded-lg text-sm"
+                      placeholder="Annotation text..."
+                    />
+                    <div className="flex gap-2">
+                        <input 
+                            type="range" min="10" max="100" 
+                            value={currentAnnotations.find(a => a.id === selectedAnnotationId)?.size || 24}
+                            onChange={(e) => updateSelectedAnnotation({ size: parseInt(e.target.value) })}
+                            className="flex-1 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600 mt-3"
+                        />
+                        <button onClick={deleteSelectedAnnotation} className="p-2 text-red-500 hover:bg-red-50 rounded-lg">
+                            <Trash2 className="w-4 h-4" />
+                        </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-slate-400 italic">Click on the figure to add a text label.</p>
+                )}
+              </section>
+            )}
+
+            {mode === 'adjust' && (
+              <section className="space-y-6">
+                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Advanced Adjustments</h3>
+                
+                <div className="space-y-4">
+                  <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Levels (Curves)</h4>
+                  <div>
+                    <div className="flex justify-between mb-1">
+                      <label className="text-[10px] font-bold text-slate-600">Gamma</label>
+                      <span className="text-[10px] font-black text-indigo-600">{currentAdj.gamma.toFixed(2)}</span>
+                    </div>
+                    <input 
+                      type="range" min="0.1" max="3" step="0.1" value={currentAdj.gamma} 
+                      onChange={(e) => updateAdjustment('gamma', parseFloat(e.target.value))}
+                      className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex justify-between mb-1">
+                      <label className="text-[10px] font-bold text-slate-600">Saturation</label>
+                      <span className="text-[10px] font-black text-indigo-600">{currentAdj.saturate}%</span>
+                    </div>
+                    <input 
+                      type="range" min="0" max="200" value={currentAdj.saturate} 
+                      onChange={(e) => updateAdjustment('saturate', parseInt(e.target.value))}
+                      className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Color Balance</h4>
+                  <div>
+                    <div className="flex justify-between mb-1">
+                      <label className="text-[10px] font-bold text-red-600">Red</label>
+                      <span className="text-[10px] font-black text-red-600">{currentAdj.red}%</span>
+                    </div>
+                    <input 
+                      type="range" min="0" max="200" value={currentAdj.red} 
+                      onChange={(e) => updateAdjustment('red', parseInt(e.target.value))}
+                      className="w-full h-1.5 bg-red-100 rounded-lg appearance-none cursor-pointer accent-red-600"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex justify-between mb-1">
+                      <label className="text-[10px] font-bold text-green-600">Green</label>
+                      <span className="text-[10px] font-black text-green-600">{currentAdj.green}%</span>
+                    </div>
+                    <input 
+                      type="range" min="0" max="200" value={currentAdj.green} 
+                      onChange={(e) => updateAdjustment('green', parseInt(e.target.value))}
+                      className="w-full h-1.5 bg-green-100 rounded-lg appearance-none cursor-pointer accent-green-600"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex justify-between mb-1">
+                      <label className="text-[10px] font-bold text-blue-600">Blue</label>
+                      <span className="text-[10px] font-black text-blue-600">{currentAdj.blue}%</span>
+                    </div>
+                    <input 
+                      type="range" min="0" max="200" value={currentAdj.blue} 
+                      onChange={(e) => updateAdjustment('blue', parseInt(e.target.value))}
+                      className="w-full h-1.5 bg-blue-100 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                    />
+                  </div>
                 </div>
               </section>
             )}
@@ -529,11 +755,11 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
                     <label className="text-[11px] font-bold text-slate-600 flex items-center gap-2">
                       <Sun className="w-3 h-3" /> Brightness
                     </label>
-                    <span className="text-[11px] font-black text-indigo-600">{brightness}%</span>
+                    <span className="text-[11px] font-black text-indigo-600">{currentAdj.brightness}%</span>
                   </div>
                   <input 
-                    type="range" min="0" max="200" value={brightness} 
-                    onChange={(e) => setBrightness(parseInt(e.target.value))}
+                    type="range" min="0" max="200" value={currentAdj.brightness} 
+                    onChange={(e) => updateAdjustment('brightness', parseInt(e.target.value))}
                     className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
                   />
                 </div>
@@ -542,11 +768,11 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
                     <label className="text-[11px] font-bold text-slate-600 flex items-center gap-2">
                       <Contrast className="w-3 h-3" /> Contrast
                     </label>
-                    <span className="text-[11px] font-black text-indigo-600">{contrast}%</span>
+                    <span className="text-[11px] font-black text-indigo-600">{currentAdj.contrast}%</span>
                   </div>
                   <input 
-                    type="range" min="0" max="200" value={contrast} 
-                    onChange={(e) => setContrast(parseInt(e.target.value))}
+                    type="range" min="0" max="200" value={currentAdj.contrast} 
+                    onChange={(e) => updateAdjustment('contrast', parseInt(e.target.value))}
                     className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
                   />
                 </div>
@@ -556,7 +782,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
                     className="w-full py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2"
                   >
                     <CheckCircle2 className="w-4 h-4" />
-                    Apply Filters to All
+                    Apply Adjustments to All
                   </button>
                 )}
               </div>
@@ -583,14 +809,17 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
             <div className="relative shadow-2xl rounded-lg overflow-hidden bg-white">
               <canvas 
                 ref={canvasRef}
-                onMouseDown={startDrawing}
+                onMouseDown={(e) => {
+                    if (mode === 'text') handleCanvasClick(e);
+                    else startDrawing(e);
+                }}
                 onMouseMove={draw}
                 onMouseUp={stopDrawing}
                 onMouseLeave={stopDrawing}
                 onTouchStart={startDrawing}
                 onTouchMove={draw}
                 onTouchEnd={stopDrawing}
-                className={`max-w-full max-h-full object-contain ${mode === 'draw' ? 'cursor-crosshair' : mode === 'crop' ? 'cursor-nwse-resize' : 'cursor-default'}`}
+                className={`max-w-full max-h-full object-contain ${mode === 'draw' ? 'cursor-crosshair' : mode === 'crop' ? 'cursor-nwse-resize' : mode === 'text' ? 'cursor-text' : 'cursor-default'}`}
               />
               
               {mode === 'crop' && (
