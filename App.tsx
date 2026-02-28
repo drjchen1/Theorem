@@ -696,7 +696,7 @@ const App: React.FC = () => {
                 </svg>
               </div>
               <h2 className="text-3xl font-black text-slate-900 tracking-tight mb-2">How it works</h2>
-              <p className="text-slate-500 font-medium">Get the most out of Theorem</p>
+              <p className="text-slate-500 font-medium">Get the most out of Q.E.D.</p>
             </div>
 
             <div className="space-y-6">

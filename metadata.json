@@ -1,5 +1,5 @@
 {
-  "name": "Theorem",
-  "description": "A professional-grade digitizer for handwritten mathematics. Converts scans into accessible, WCAG-compliant HTML with AI-powered LaTeX refinement, digital diagram reconstruction, and multiple language adaptation levels.",
+  "name": "Q.E.D.",
+  "description": "Quite Easily Digitized. A sophisticated transcription engine for the mathematically gifted but penmanship-challenged. We transform your chaotic scribbles into pristine, WCAG-compliant LaTeX. Because while your proofs are rigorous, your handwriting shouldn't be a test of faith.",
   "requestFramePermissions": []
 }
