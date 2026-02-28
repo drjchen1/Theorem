@@ -1,0 +1,5 @@
+{
+  "name": "Theorem",
+  "description": "A professional-grade digitizer for handwritten mathematics. Converts scans into accessible, WCAG-compliant HTML with AI-powered LaTeX refinement, digital diagram reconstruction, and multiple language adaptation levels.",
+  "requestFramePermissions": []
+}
