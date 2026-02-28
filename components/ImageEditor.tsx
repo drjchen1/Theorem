@@ -58,6 +58,8 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
 
   // Store edited versions of each figure
   const [editedSrcs, setEditedSrcs] = useState<Record<string, string>>({});
+  // Store specifically the AI-recreated versions
+  const [recreatedSrcs, setRecreatedSrcs] = useState<Record<string, string>>({});
 
   const currentAnnotations = annotations[currentFigure.id] || [];
   const currentAdj = adjustments[currentFigure.id] || {
@@ -222,13 +224,16 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
     setIsRecreating(true);
     try {
       const targets = all ? figures : [currentFigure];
-      const updates: Record<string, string> = { ...editedSrcs };
+      const newRecreated = { ...recreatedSrcs };
+      const updates = { ...editedSrcs };
       
       for (const fig of targets) {
         const srcToUse = updates[fig.id] || fig.src;
         const newSrc = await recreateFigure(srcToUse, fig.alt);
+        newRecreated[fig.id] = newSrc;
         updates[fig.id] = newSrc;
       }
+      setRecreatedSrcs(newRecreated);
       setEditedSrcs(updates);
       // Reset adjustments for recreated figures as they are now "clean"
       const newAdjs = { ...adjustments };
@@ -466,9 +471,9 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/90 backdrop-blur-md p-4 lg:p-12"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950 p-0 lg:p-8"
     >
-      <div className="bg-white w-full max-w-6xl h-full max-h-[90vh] rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden">
+      <div className="bg-white w-full max-w-7xl h-full lg:h-[95vh] lg:rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
         <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
           <div className="flex items-center gap-4">
@@ -534,7 +539,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
               <div className="grid grid-cols-2 gap-2">
                 <button 
                   onClick={() => switchToSource(currentFigure.originalSrc)}
-                  className="p-2 bg-white border border-slate-200 rounded-xl flex flex-col items-center gap-2 hover:border-indigo-300 transition-all group"
+                  className={`p-2 bg-white border rounded-xl flex flex-col items-center gap-2 transition-all group ${editedSrcs[currentFigure.id] === currentFigure.originalSrc ? 'border-indigo-600 ring-2 ring-indigo-100' : 'border-slate-200 hover:border-indigo-300'}`}
                 >
                   <div className="w-full aspect-video bg-slate-100 rounded-lg overflow-hidden border border-slate-100">
                     <img src={currentFigure.originalSrc} alt="Original" className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
@@ -542,11 +547,11 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
                   <span className="text-[9px] font-bold text-slate-600">Handwritten</span>
                 </button>
                 <button 
-                  onClick={() => switchToSource(currentFigure.src)}
-                  className="p-2 bg-white border border-slate-200 rounded-xl flex flex-col items-center gap-2 hover:border-indigo-300 transition-all group"
+                  onClick={() => switchToSource(recreatedSrcs[currentFigure.id] || currentFigure.src)}
+                  className={`p-2 bg-white border rounded-xl flex flex-col items-center gap-2 transition-all group ${editedSrcs[currentFigure.id] === (recreatedSrcs[currentFigure.id] || currentFigure.src) ? 'border-indigo-600 ring-2 ring-indigo-100' : 'border-slate-200 hover:border-indigo-300'}`}
                 >
                   <div className="w-full aspect-video bg-slate-100 rounded-lg overflow-hidden border border-slate-100">
-                    <img src={currentFigure.src} alt="AI Generated" className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
+                    <img src={recreatedSrcs[currentFigure.id] || currentFigure.src} alt="AI Generated" className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
                   </div>
                   <span className="text-[9px] font-bold text-slate-600">AI Digitized</span>
                 </button>

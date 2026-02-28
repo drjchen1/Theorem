@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import { GeminiPageResponse, LanguageLevel } from "../types";
 
 const getSystemInstruction = (level: LanguageLevel) => {
@@ -49,6 +49,8 @@ Rules:
        { "id": "fig_1", "box_2d": [ymin, xmin, ymax, xmax], "alt": "Detailed visual description" }
      ]
    }
+
+CRITICAL: Do not include any internal monologue, reasoning, or "thinking" process in the output. Return ONLY the JSON object.
 `;
 };
 
@@ -99,7 +101,7 @@ async function callGeminiWithRetry(base64Image: string, pageNumber: number, leve
           },
           temperature: 0.1,
           maxOutputTokens: 65536,
-          thinkingConfig: { thinkingBudget: 12288 }
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
         }
       });
 
@@ -160,11 +162,12 @@ export const refineLatex = async (html: string): Promise<string> => {
           HTML CONTENT:
           ${html}
           
-          Return ONLY the refined HTML string.` }
+          Return ONLY the refined HTML string. Do not include any internal monologue, reasoning, or "thinking" process in the output.` }
         ]
       },
       config: {
         temperature: 0,
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
       }
     });
 

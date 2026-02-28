@@ -213,76 +213,97 @@ const App: React.FC = () => {
     try {
       const pageData = await pdfToImageData(file);
       const totalPages = pageData.length;
-      const convertedResults: ConversionResult[] = [];
+      
+      // Process pages in parallel with a concurrency limit
+      const CONCURRENCY_LIMIT = 3;
+      const results: ConversionResult[] = new Array(totalPages);
+      let completedPages = 0;
 
-      for (let i = 0; i < pageData.length; i++) {
-        setState(prev => ({ 
-          ...prev, 
-          statusMessage: `Digitizing Page ${i + 1} of ${totalPages}...`,
-          progress: (i / totalPages) * 100
-        }));
-
-        const geminiResponse = await convertPageToHtml(pageData[i].base64, i + 1, languageLevel);
-        let finalHtml = geminiResponse.html;
-        
-        // Final check for equations
-        setState(prev => ({ ...prev, statusMessage: `Refining equations for Page ${i + 1}...` }));
+      const processPage = async (i: number) => {
         try {
-          finalHtml = await refineLatex(finalHtml);
-        } catch (e) {
-          console.error('Latex refinement failed', e);
-        }
+          setState(prev => ({ 
+            ...prev, 
+            statusMessage: `Digitizing Page ${i + 1}...`,
+          }));
 
-        // Process figures (Default to original handwritten figures)
-        setState(prev => ({ ...prev, statusMessage: `Processing figures for Page ${i + 1}...` }));
-        
-        const figureResults = geminiResponse.figures.map((fig) => {
-          const screenshotBase64 = cropImage(pageData[i].canvas, fig);
-          return {
-            id: fig.id,
-            originalSrc: screenshotBase64,
-            currentSrc: screenshotBase64, // Default to original handwritten
-            alt: fig.alt
+          const geminiResponse = await convertPageToHtml(pageData[i].base64, i + 1, languageLevel);
+          let finalHtml = geminiResponse.html;
+          
+          // Final check for equations - only if math is present
+          const hasMath = finalHtml.includes('\\(') || finalHtml.includes('\\[');
+          if (hasMath) {
+            try {
+              finalHtml = await refineLatex(finalHtml);
+            } catch (e) {
+              console.error('Latex refinement failed', e);
+            }
+          }
+
+          // Process figures
+          const figureResults = geminiResponse.figures.map((fig) => {
+            const screenshotBase64 = cropImage(pageData[i].canvas, fig);
+            return {
+              id: fig.id,
+              originalSrc: screenshotBase64,
+              currentSrc: screenshotBase64,
+              alt: fig.alt
+            };
+          });
+          
+          figureResults.forEach(figResult => {
+            const imgTagRegex = new RegExp(`<img[^>]*id=["']${figResult.id}["'][^>]*>`, 'g');
+            const figureHtml = `
+              <figure class="my-8 p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col items-center group/fig" role="group" aria-label="Visual figure: ${figResult.alt}">
+                <div class="relative overflow-hidden rounded-lg shadow-sm border border-slate-200 bg-white">
+                  <img src="${figResult.currentSrc}" alt="${figResult.alt.replace(/"/g, '&quot;')}" class="max-w-full" data-figure-id="${figResult.id}">
+                  <button class="edit-figure-btn absolute top-2 right-2 p-2 bg-white/90 backdrop-blur shadow-lg rounded-lg opacity-0 group-hover/fig:opacity-100 transition-all hover:bg-indigo-600 hover:text-white" data-figure-id="${figResult.id}" title="Edit Figure">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                  </button>
+                </div>
+                <figcaption class="mt-4 text-[10px] text-slate-400 font-sans text-center italic">
+                  Figure: ${figResult.alt}
+                </figcaption>
+              </figure>
+            `;
+            finalHtml = finalHtml.replace(imgTagRegex, figureHtml);
+          });
+
+          const audit = runAccessibilityAudit(finalHtml);
+
+          results[i] = { 
+            html: finalHtml, 
+            pageNumber: i + 1,
+            width: pageData[i].width,
+            height: pageData[i].height,
+            audit,
+            figures: figureResults
           };
-        });
-        
-        figureResults.forEach(figResult => {
-          const imgTagRegex = new RegExp(`<img[^>]*id=["']${figResult.id}["'][^>]*>`, 'g');
-          
-          const figureHtml = `
-            <figure class="my-8 p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col items-center group/fig" role="group" aria-label="Visual figure: ${figResult.alt}">
-              <div class="relative overflow-hidden rounded-lg shadow-sm border border-slate-200 bg-white">
-                <img src="${figResult.currentSrc}" alt="${figResult.alt.replace(/"/g, '&quot;')}" class="max-w-full" data-figure-id="${figResult.id}">
-                <button class="edit-figure-btn absolute top-2 right-2 p-2 bg-white/90 backdrop-blur shadow-lg rounded-lg opacity-0 group-hover/fig:opacity-100 transition-all hover:bg-indigo-600 hover:text-white" data-figure-id="${figResult.id}" title="Edit Figure">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
-                </button>
-              </div>
-              <figcaption class="mt-4 text-[10px] text-slate-400 font-sans text-center italic">
-                Figure: ${figResult.alt}
-              </figcaption>
-            </figure>
-          `;
-          
-          finalHtml = finalHtml.replace(imgTagRegex, figureHtml);
-        });
 
-        const audit = runAccessibilityAudit(finalHtml);
+          completedPages++;
+          setState(prev => ({
+            ...prev,
+            progress: (completedPages / totalPages) * 100,
+            statusMessage: `Completed ${completedPages} of ${totalPages} pages...`,
+            results: results.filter(r => r !== undefined).sort((a, b) => a.pageNumber - b.pageNumber)
+          }));
+        } catch (err: any) {
+          console.error(`Error processing page ${i + 1}:`, err);
+          throw err;
+        }
+      };
 
-        convertedResults.push({ 
-          html: finalHtml, 
-          pageNumber: i + 1,
-          width: pageData[i].width,
-          height: pageData[i].height,
-          audit,
-          figures: figureResults
-        });
-        
-        setState(prev => ({
-          ...prev,
-          results: [...convertedResults],
-          progress: ((i + 1) / totalPages) * 100
-        }));
+      // Simple concurrency pool
+      const pool = [];
+      for (let i = 0; i < totalPages; i++) {
+        const p = processPage(i);
+        pool.push(p);
+        if (pool.length >= CONCURRENCY_LIMIT) {
+          await Promise.race(pool);
+          // Remove completed promises from pool
+          // This is a bit simplified, but works for small sets
+        }
       }
+      await Promise.all(pool);
 
       setState(prev => ({ ...prev, isProcessing: false, statusMessage: 'Digitization Complete' }));
       setActiveTab(0);

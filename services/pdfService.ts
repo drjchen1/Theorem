@@ -12,9 +12,10 @@ export interface PdfImageData {
 export const pdfToImageData = async (file: File): Promise<PdfImageData[]> => {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  const data: PdfImageData[] = [];
-
-  for (let i = 1; i <= pdf.numPages; i++) {
+  
+  const pageIndices = Array.from({ length: pdf.numPages }, (_, i) => i + 1);
+  
+  const data = await Promise.all(pageIndices.map(async (i) => {
     const page = await pdf.getPage(i);
     const viewport = page.getViewport({ scale: 2.5 }); 
     const canvas = document.createElement('canvas');
@@ -27,14 +28,14 @@ export const pdfToImageData = async (file: File): Promise<PdfImageData[]> => {
 
     await page.render({ canvasContext: context, viewport }).promise;
     
-    const base64 = canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
-    data.push({ 
+    const base64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+    return { 
       base64, 
       canvas, 
       width: viewport.width, 
       height: viewport.height 
-    });
-  }
+    };
+  }));
 
   return data;
 };
