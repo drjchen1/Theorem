@@ -718,7 +718,7 @@ const App: React.FC = () => {
                 <div className="flex-shrink-0 w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-xs font-black text-slate-400">03</div>
                 <div>
                   <h4 className="font-bold text-slate-900 mb-1">Export & Share</h4>
-                  <p className="text-sm text-slate-500 leading-relaxed">Download the result as a standalone, WCAG-compliant HTML file that renders beautifully on any device using MathJax.</p>
+                  <p className="text-sm text-slate-500 leading-relaxed">Download the result as a standalone, WCAG 2.2 AA compliant HTML file—because while your proofs are rigorous, your handwriting shouldn’t be a test of faith.</p>
                 </div>
               </div>
             </div>
