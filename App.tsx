@@ -123,8 +123,11 @@ const App: React.FC = () => {
     const checks = [];
 
     // Check 1: Alt text for all images/figures (1.1.1)
-    const images = doc.querySelectorAll('img');
-    const allImagesHaveAlt = images.length === 0 || Array.from(images).every(img => img.getAttribute('alt') && img.getAttribute('alt')!.trim().length > 0);
+    const images = Array.from(doc.querySelectorAll('img'));
+    const allImagesHaveAlt = images.length === 0 || images.every(img => {
+      const alt = img.getAttribute('alt');
+      return alt && alt.trim().length > 0;
+    });
     checks.push({
       title: 'Alt Text (1.1.1)',
       passed: allImagesHaveAlt,
@@ -132,55 +135,75 @@ const App: React.FC = () => {
       suggestion: allImagesHaveAlt ? undefined : 'Use the Figure Editor to add descriptive alt text to all images.'
     });
 
-    // Check 2: Semantic Headings (1.3.1)
-    const headings = doc.querySelectorAll('h1, h2, h3, h4, h5, h6');
-    const hasHeadings = headings.length > 0;
+    // Check 2: Heading Structure (1.3.1) - Sequential Order
+    const headings = Array.from(doc.querySelectorAll('h1, h2, h3, h4, h5, h6'));
+    let headingOrderValid = true;
+    let lastLevel = 0;
+    for (const h of headings) {
+      const level = parseInt(h.tagName[1]);
+      if (level > lastLevel + 1 && lastLevel !== 0) {
+        headingOrderValid = false;
+        break;
+      }
+      lastLevel = level;
+    }
+    const hasH1 = headings.some(h => h.tagName === 'H1');
+    
     checks.push({
-      title: 'Headings (1.3.1)',
-      passed: hasHeadings,
-      description: 'Document uses semantic heading levels for logical structure and navigation.',
-      suggestion: hasHeadings ? undefined : 'Ensure the document has at least one heading (e.g., <h1> for the title).'
+      title: 'Heading Order (1.3.1)',
+      passed: headingOrderValid && headings.length > 0 && hasH1,
+      description: 'Headings should follow a logical nested order (e.g., h1 followed by h2) without skipping levels.',
+      suggestion: !headings.length ? 'Add at least one <h1> heading.' : 
+                  !hasH1 ? 'Ensure the document starts with an <h1>.' :
+                  !headingOrderValid ? 'Fix skipped heading levels (e.g., don\'t jump from <h1> to <h3>).' : undefined
     });
 
     // Check 3: ARIA Landmarks (1.3.1)
-    const hasArticle = doc.querySelector('article') !== null || html.includes('<article');
+    const hasLandmarks = doc.querySelector('article, section, main, nav, header, footer') !== null;
     checks.push({
       title: 'Landmarks (1.3.1)',
-      passed: hasArticle,
-      description: 'Content is organized within semantic landmarks like <article> or <section>.',
-      suggestion: hasArticle ? undefined : 'Wrap main content in <article> or <section> tags for better navigation.'
+      passed: hasLandmarks,
+      description: 'Content is organized within semantic landmarks like <article> or <section> for easier navigation.',
+      suggestion: hasLandmarks ? undefined : 'Wrap main content in <article> or <section> tags.'
     });
 
-    // Check 4: Color Contrast (1.4.3) - Simulation based on CSS design
-    const usesStandardColors = !html.includes('style="color:') && !html.includes('style="background:');
+    // Check 4: Color Contrast (1.4.3) - Simulation
+    const hasInlineColors = html.includes('style="color:') || html.includes('style="background:');
+    const hasLowContrastClasses = html.includes('text-slate-300') || html.includes('text-gray-300') || html.includes('text-zinc-300') || html.includes('text-slate-400');
+    const contrastPassed = !hasInlineColors && !hasLowContrastClasses;
+    
     checks.push({
       title: 'Contrast (1.4.3)',
-      passed: usesStandardColors,
-      description: 'Text colors meet the 4.5:1 minimum ratio for standard text visibility.',
-      suggestion: usesStandardColors ? undefined : 'Avoid using inline styles for color; stick to the default high-contrast theme.'
+      passed: contrastPassed,
+      description: 'Text must have a contrast ratio of at least 4.5:1 against its background.',
+      suggestion: !contrastPassed ? 'Avoid light gray text or inline color styles that might be hard to read.' : undefined
     });
 
-    // Check 5: Keyboard Focus (2.1.1)
-    const interactive = doc.querySelectorAll('a, button, details, [tabindex]');
-    const allInteractiveAccessible = Array.from(interactive).every(el => {
-        const tabIndex = el.getAttribute('tabindex');
-        return tabIndex !== '-1';
+    // Check 5: Keyboard Navigation (2.1.1)
+    const interactive = Array.from(doc.querySelectorAll('a, button, details, [tabindex]'));
+    const noTabindexMinusOne = interactive.every(el => el.getAttribute('tabindex') !== '-1');
+    const allHaveLabels = interactive.every(el => {
+      const text = el.textContent?.trim();
+      const ariaLabel = el.getAttribute('aria-label');
+      const title = el.getAttribute('title');
+      return (text && text.length > 0) || (ariaLabel && ariaLabel.length > 0) || (title && title.length > 0);
     });
+    
     checks.push({
       title: 'Keyboard (2.1.1)',
-      passed: allInteractiveAccessible,
-      description: 'Ensures all interactive elements are reachable and operable via keyboard.',
-      suggestion: allInteractiveAccessible ? undefined : 'Remove tabindex="-1" from interactive elements unless they are hidden.'
+      passed: noTabindexMinusOne && allHaveLabels,
+      description: 'All interactive elements must be reachable via keyboard and have descriptive labels.',
+      suggestion: !noTabindexMinusOne ? 'Remove tabindex="-1" from interactive elements.' :
+                  !allHaveLabels ? 'Add text or aria-labels to all buttons and links.' : undefined
     });
 
-    // Check 6: Screen Reader hints (4.1.2)
+    // Check 6: Screen Reader (4.1.2)
     const hasGroupRoles = doc.querySelectorAll('figure[role="group"]').length > 0;
-    const hasMath = html.includes('\\(') || html.includes('\\[');
     checks.push({
       title: 'Screen Reader (4.1.2)',
-      passed: hasGroupRoles || !images.length,
-      description: 'Verification of ARIA roles and name properties for assistive technologies.',
-      suggestion: (hasGroupRoles || !images.length) ? undefined : 'Wrap complex figures in <figure role="group"> with an aria-label.'
+      passed: images.length === 0 || hasGroupRoles,
+      description: 'Complex components like figures should use ARIA roles to describe their purpose.',
+      suggestion: (images.length > 0 && !hasGroupRoles) ? 'Ensure figures are wrapped in <figure role="group">.' : undefined
     });
 
     const passedCount = checks.filter(c => c.passed).length;
@@ -383,61 +406,62 @@ const App: React.FC = () => {
         @import url('https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Inter:wght@400;600&display=swap');
         
         :root {
-            --bg: #ffffff;
-            --ink: #1a1a1a;
-            --heading-color: #003366; /* Purdue-style dark blue */
-            --accent: #ceb888; /* Purdue Gold accent */
-            --link-color: #004499;
+            --bg: #fdfdfd;
+            --ink: #1e293b;
+            --heading-color: #0f172a;
+            --accent: #4f46e5;
+            --link-color: #4338ca;
         }
 
         body { 
-            font-family: 'Crimson Pro', 'Georgia', serif; 
+            font-family: 'Inter', system-ui, sans-serif; 
             background-color: var(--bg); 
             color: var(--ink); 
             margin: 0; 
             padding: 0; 
-            line-height: 1.75;
-            font-size: 1.25rem;
+            line-height: 1.7;
+            font-size: 1.125rem;
         }
 
         .document-header { 
-            padding: 4rem 2rem 2rem; 
+            padding: 6rem 2rem 4rem; 
             text-align: left; 
-            max-width: 1000px; 
+            max-width: 800px; 
             margin: 0 auto;
-            border-bottom: 3px solid var(--accent);
+            border-bottom: 1px solid #e2e8f0;
         }
 
         .document-title { 
-            font-family: 'Crimson Pro', serif;
-            font-size: 3rem; 
-            font-weight: 700; 
+            font-family: 'Inter', sans-serif;
+            font-size: 3.5rem; 
+            font-weight: 900; 
             color: var(--heading-color); 
-            margin: 0.5rem 0; 
-            line-height: 1.1;
+            margin: 1rem 0; 
+            line-height: 1;
+            letter-spacing: -0.04em;
         }
 
         .document-meta { 
-            color: #555; 
-            font-size: 0.9rem; 
+            color: #64748b; 
+            font-size: 0.8rem; 
             font-family: 'Inter', sans-serif;
-            font-weight: 600; 
+            font-weight: 700; 
             text-transform: uppercase; 
-            letter-spacing: 0.05em; 
+            letter-spacing: 0.1em; 
         }
 
         .container { 
-            max-width: 1000px; 
+            max-width: 800px; 
             margin: 0 auto; 
-            padding: 2rem 2rem 10rem; 
+            padding: 4rem 2rem 12rem; 
         }
 
         article { 
-            margin-bottom: 4rem; 
+            margin-bottom: 6rem; 
             position: relative; 
             width: 100%; 
             background: white;
-            padding: 2rem 0;
+            padding: 0;
         }
 
         .math-content { 
@@ -445,70 +469,79 @@ const App: React.FC = () => {
         }
 
         .math-content p {
-            margin-bottom: 2rem;
+            margin-bottom: 1.5rem;
         }
 
         .page-badge { 
             display: inline-block;
-            margin-bottom: 1rem;
-            padding: 0.25rem 0.75rem; 
-            background: #f0f0f0;
-            color: #666; 
+            margin-bottom: 2rem;
+            padding: 0.35rem 0.85rem; 
+            background: #f1f5f9;
+            color: #475569; 
             font-family: 'Inter', sans-serif;
-            font-size: 0.75rem; 
-            font-weight: 600; 
+            font-size: 0.7rem; 
+            font-weight: 800; 
             text-transform: uppercase;
-            border-radius: 4px;
+            border-radius: 9999px;
+            letter-spacing: 0.05em;
         }
 
         .notebox { 
-            border: 1px solid #ddd;
-            border-left: 6px solid var(--accent); 
-            padding: 1.5rem 2rem; 
-            margin: 2rem 0; 
-            background-color: #fdfdfd; 
+            border: 1px solid #e2e8f0;
+            border-left: 4px solid var(--accent); 
+            padding: 2rem; 
+            margin: 3rem 0; 
+            background-color: #f8fafc; 
             font-style: normal; 
-            color: #333; 
-            border-radius: 4px;
+            color: #334155; 
+            border-radius: 0.75rem;
+            shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
         }
 
         h1, h2, h3, h4 {
-            font-family: 'Crimson Pro', serif;
+            font-family: 'Inter', sans-serif;
             color: var(--heading-color);
-            margin-top: 2.5rem;
-            margin-bottom: 1.25rem;
-            line-height: 1.3;
-            font-weight: 700;
+            margin-top: 4rem;
+            margin-bottom: 1.5rem;
+            line-height: 1.2;
+            font-weight: 800;
+            letter-spacing: -0.02em;
         }
 
-        h1 { font-size: 2.25rem; border-bottom: 1px solid #eee; padding-bottom: 0.5rem; }
-        h2 { font-size: 1.85rem; }
+        h1 { font-size: 2.5rem; }
+        h2 { font-size: 2rem; }
         h3 { font-size: 1.5rem; }
 
         a {
             color: var(--link-color);
             text-decoration: underline;
-            text-underline-offset: 2px;
+            text-underline-offset: 4px;
+            font-weight: 600;
+            transition: all 0.2s;
         }
 
         a:hover {
-            color: #002255;
+            color: var(--accent);
+            text-decoration-thickness: 2px;
         }
 
         figure {
-            margin: 3rem 0;
-            padding: 1.5rem;
+            margin: 4rem 0;
+            padding: 2rem;
             background: #fff;
-            border: 1px solid #eee;
+            border: 1px solid #f1f5f9;
+            border-radius: 1rem;
             text-align: center;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
         }
 
         figcaption {
             font-family: 'Inter', sans-serif;
-            font-size: 0.9rem;
-            color: #666;
-            margin-top: 1rem;
+            font-size: 0.875rem;
+            color: #64748b;
+            margin-top: 1.5rem;
             font-style: italic;
+            font-weight: 500;
         }
 
         img {

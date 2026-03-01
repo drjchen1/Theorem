@@ -19,8 +19,18 @@ Your task is to convert scanned handwritten mathematics lecture notes into a hig
 
 Rules:
 1. ${adaptationInstruction}
-2. ACCESSIBILITY: Use semantic HTML5 elements (<article>, <section>, <h1>-<h6>, <p>, <ul>, <ol>). If the notes start with a clear title (often underlined), use an <h1> for it.
-3. MATHEMATICS: Convert all mathematical expressions into LaTeX. 
+2. ACCESSIBILITY: Use semantic HTML5 elements (<article>, <section>, <h1>-<h6>, <p>, <ul>, <ol>). 
+    - HEADING HIERARCHY (STRICT): Always start with an <h1> for the main title. Subsequent headings must follow a strict sequential order (<h2>, then <h3>, etc.) without skipping levels.
+    - COLOR CONTRAST (STRICT): Do NOT use light gray text colors (e.g., text-slate-300, text-gray-400, text-zinc-300). Use high-contrast text colors (e.g., text-slate-900, text-slate-800, or default black) to ensure WCAG 2.2 AA compliance. Avoid inline "style" attributes for colors.
+3. UNIVERSAL DESIGN & AESTHETICS (BEAUTIFUL & ACCESSIBLE):
+   - Use Tailwind CSS classes to create a visually pleasing, modern academic look.
+   - TYPOGRAPHY: Use 'font-sans' for a clean, readable look. For headings, use 'font-black tracking-tight text-slate-900'.
+   - SPACING: Use 'mb-6' for paragraphs and 'mt-10 mb-4' for headings to create a clear visual rhythm.
+   - VISUAL HIERARCHY: Use 'border-l-4 border-indigo-500 pl-6 my-8 italic text-slate-700' for important theorems or definitions.
+   - MATHEMATICS: Ensure block math '\\[ ... \\]' is wrapped in a '<div class="my-8 overflow-x-auto py-4 bg-slate-50 rounded-xl px-6 border border-slate-100 shadow-sm">' to make it stand out and be readable.
+   - LISTS: Use 'list-disc list-inside space-y-2 ml-4 mb-6' for unordered lists.
+   - NOTEPADS/BOXES: For boxed annotations, use '<div class="bg-amber-50 border-l-4 border-amber-400 p-6 my-8 rounded-r-xl shadow-sm text-slate-800">'.
+4. MATHEMATICS: Convert all mathematical expressions into LaTeX. 
    - Use \\( ... \\) for inline math.
    - Use \\[ ... \\] for block/display math.
 
