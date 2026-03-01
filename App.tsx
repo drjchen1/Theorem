@@ -74,24 +74,37 @@ const App: React.FC = () => {
     }
   };
 
-  const saveEditedFigures = (updates: { figureId: string, pageIndex: number, newSrc: string }[]) => {
+  const saveEditedFigures = (updates: { figureId: string, pageIndex: number, newSrc: string, newAlt?: string }[]) => {
     setState(prev => {
       const newResults = [...prev.results];
       
-      updates.forEach(({ figureId, pageIndex, newSrc }) => {
+      updates.forEach(({ figureId, pageIndex, newSrc, newAlt }) => {
         const page = { ...newResults[pageIndex] };
         const figureIndex = page.figures.findIndex(f => f.id === figureId);
         
         if (figureIndex !== -1) {
           const newFigures = [...page.figures];
-          newFigures[figureIndex] = { ...newFigures[figureIndex], currentSrc: newSrc };
+          const updatedFig = { ...newFigures[figureIndex], currentSrc: newSrc };
+          if (newAlt !== undefined) updatedFig.alt = newAlt;
+          newFigures[figureIndex] = updatedFig;
           page.figures = newFigures;
           
           const parser = new DOMParser();
           const doc = parser.parseFromString(page.html, 'text/html');
           const img = doc.querySelector(`img[data-figure-id="${figureId}"]`);
-          if (img) {
+          const figure = img?.closest('figure');
+          
+          if (img && figure) {
+            const cleanAlt = (newAlt || updatedFig.alt).replace(/\\\(|\\\)|\\\[|\\\]/g, '').replace(/"/g, '&quot;');
             img.setAttribute('src', newSrc);
+            img.setAttribute('alt', cleanAlt);
+            figure.setAttribute('aria-label', `Visual figure: ${cleanAlt}`);
+            
+            const figcaption = figure.querySelector('figcaption');
+            if (figcaption) {
+              figcaption.innerHTML = `Figure: ${newAlt || updatedFig.alt}`;
+            }
+            
             page.html = doc.body.innerHTML;
           }
           newResults[pageIndex] = page;
@@ -252,15 +265,16 @@ const App: React.FC = () => {
           
           figureResults.forEach(figResult => {
             const imgTagRegex = new RegExp(`<img[^>]*id=["']${figResult.id}["'][^>]*>`, 'g');
+            const cleanAlt = figResult.alt.replace(/\\\(|\\\)|\\\[|\\\]/g, '').replace(/"/g, '&quot;');
             const figureHtml = `
-              <figure class="my-8 p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col items-center group/fig" role="group" aria-label="Visual figure: ${figResult.alt}">
+              <figure class="my-8 p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col items-center group/fig" role="group" aria-label="Visual figure: ${cleanAlt}">
                 <div class="relative overflow-hidden rounded-lg shadow-sm border border-slate-200 bg-white">
-                  <img src="${figResult.currentSrc}" alt="${figResult.alt.replace(/"/g, '&quot;')}" class="max-w-full" data-figure-id="${figResult.id}">
+                  <img src="${figResult.currentSrc}" alt="${cleanAlt}" class="max-w-full" data-figure-id="${figResult.id}">
                   <button class="edit-figure-btn absolute top-2 right-2 p-2 bg-white/90 backdrop-blur shadow-lg rounded-lg opacity-0 group-hover/fig:opacity-100 transition-all hover:bg-indigo-600 hover:text-white" data-figure-id="${figResult.id}" title="Edit Figure">
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
                   </button>
                 </div>
-                <figcaption class="mt-4 text-[10px] text-slate-400 font-sans text-center italic">
+                <figcaption class="mt-4 text-[10px] text-slate-400 font-sans text-center italic" aria-hidden="true">
                   Figure: ${figResult.alt}
                 </figcaption>
               </figure>

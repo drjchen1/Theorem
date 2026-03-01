@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, Crop, Sun, Contrast, Pencil, Save, RotateCcw, Download, Sparkles, Loader2, LineChart, Plus, ChevronLeft, ChevronRight, CheckCircle2, Type, SlidersHorizontal, Palette, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { recreateFigure, generateGraph } from '../services/geminiService';
+import { recreateFigure, generateGraph, describeFigure } from '../services/geminiService';
 
 interface TextAnnotation {
   id: string;
@@ -43,18 +43,21 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
   
   const [adjustments, setAdjustments] = useState<Record<string, FigureAdjustments>>({});
   const [color, setColor] = useState('#4f46e5');
-  const [mode, setMode] = useState<'view' | 'crop' | 'draw' | 'graph' | 'text' | 'adjust'>('view');
+  const [mode, setMode] = useState<'view' | 'crop' | 'draw' | 'graph' | 'text' | 'adjust' | 'accessibility'>('view');
   const [isDrawing, setIsDrawing] = useState(false);
   const [isRecreating, setIsRecreating] = useState(false);
+  const [isDescribing, setIsDescribing] = useState(false);
   const [isGeneratingGraph, setIsGeneratingGraph] = useState(false);
   const [equations, setEquations] = useState<string>('');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const altPreviewRef = useRef<HTMLDivElement>(null);
   const [cropRect, setCropRect] = useState<{ x: number, y: number, w: number, h: number } | null>(null);
   const [isCropping, setIsCropping] = useState(false);
   const [annotations, setAnnotations] = useState<Record<string, TextAnnotation[]>>({});
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState<string>('');
+  const [altTexts, setAltTexts] = useState<Record<string, string>>({});
 
   // Store edited versions of each figure
   const [editedSrcs, setEditedSrcs] = useState<Record<string, string>>({});
@@ -75,6 +78,12 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
   useEffect(() => {
     renderCanvas();
   }, [currentIndex, editedSrcs, adjustments, currentAnnotations, selectedAnnotationId]);
+
+  useEffect(() => {
+    if (mode === 'accessibility' && altPreviewRef.current && (window as any).MathJax) {
+      (window as any).MathJax.typesetPromise([altPreviewRef.current]).catch((err: any) => console.error('MathJax error:', err));
+    }
+  }, [mode, currentIndex, altTexts]);
 
   const updateAdjustment = (key: keyof FigureAdjustments, value: number) => {
     setAdjustments(prev => ({
@@ -249,6 +258,20 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
     }
   };
 
+  const handleRegenerateDescription = async () => {
+    setIsDescribing(true);
+    try {
+      const srcToUse = editedSrcs[currentFigure.id] || currentFigure.src;
+      const newDescription = await describeFigure(srcToUse);
+      setAltTexts(prev => ({ ...prev, [currentFigure.id]: newDescription }));
+    } catch (error) {
+      console.error('Description regeneration failed:', error);
+      alert('Failed to regenerate description. Please try again.');
+    } finally {
+      setIsDescribing(false);
+    }
+  };
+
   const handleGenerateGraph = async () => {
     if (!equations.trim()) {
       alert('Please enter at least one equation.');
@@ -408,6 +431,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
       const src = editedSrcs[fig.id] || fig.src;
       const adj = adjustments[fig.id] || { brightness: 100, contrast: 100, saturate: 100, red: 100, green: 100, blue: 100, gamma: 1 };
       const anns = annotations[fig.id] || [];
+      const newAlt = altTexts[fig.id];
 
       const bakedSrc = await new Promise<string>((resolve) => {
         img.onload = () => {
@@ -449,7 +473,8 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
       finalUpdates.push({
         figureId: fig.id,
         pageIndex: fig.pageIndex,
-        newSrc: bakedSrc
+        newSrc: bakedSrc,
+        newAlt: newAlt
       });
     }
 
@@ -630,8 +655,75 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
                   <LineChart className="w-5 h-5" />
                   <span className="text-[9px] font-bold">Graph</span>
                 </button>
+                <button 
+                  onClick={() => setMode('accessibility')}
+                  className={`p-3 rounded-xl flex flex-col items-center gap-2 transition-all ${mode === 'accessibility' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-100 hover:border-slate-300'}`}
+                >
+                  <CheckCircle2 className="w-5 h-5" />
+                  <span className="text-[9px] font-bold">Alt Text</span>
+                </button>
               </div>
             </section>
+
+            {mode === 'graph' && (
+              <section className="space-y-4">
+                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">AI Graph Generator</h3>
+                <div className="space-y-3">
+                  <label className="text-[10px] font-bold text-slate-600">Equations (one per line)</label>
+                  <textarea
+                    value={equations}
+                    onChange={(e) => setEquations(e.target.value)}
+                    className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs min-h-[100px] font-mono focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+                    placeholder="y = x^2&#10;y = sin(x)"
+                  />
+                  <button
+                    onClick={handleGenerateGraph}
+                    disabled={isGeneratingGraph || !equations.trim()}
+                    className="w-full py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-indigo-200 transition-all active:scale-95"
+                  >
+                    {isGeneratingGraph ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                    Generate Digital Graph
+                  </button>
+                  <p className="text-[9px] text-slate-400 leading-relaxed italic">
+                    Tip: Describe the graph or list equations. The AI will generate a clean, high-contrast digital version.
+                  </p>
+                </div>
+              </section>
+            )}
+
+            {mode === 'accessibility' && (
+              <section className="space-y-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Accessibility (Alt Text)</h3>
+                  <button 
+                    onClick={handleRegenerateDescription}
+                    disabled={isDescribing}
+                    className="text-[9px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-1 hover:text-indigo-700 disabled:opacity-50"
+                  >
+                    {isDescribing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                    Regenerate
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  <label className="text-[10px] font-bold text-slate-600">Description</label>
+                  <textarea
+                    value={altTexts[currentFigure.id] ?? currentFigure.alt}
+                    onChange={(e) => setAltTexts(prev => ({ ...prev, [currentFigure.id]: e.target.value }))}
+                    className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs min-h-[120px] focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+                    placeholder="Describe the figure for screen readers..."
+                  />
+                  <div className="p-3 bg-indigo-50 rounded-xl border border-indigo-100">
+                    <h4 className="text-[9px] font-black text-indigo-600 uppercase tracking-widest mb-2">Math Preview</h4>
+                    <div ref={altPreviewRef} className="text-[11px] text-slate-700 leading-relaxed">
+                      {altTexts[currentFigure.id] ?? currentFigure.alt}
+                    </div>
+                  </div>
+                  <p className="text-[9px] text-slate-400 leading-relaxed italic">
+                    Tip: Use \( ... \) for inline math and \[ ... \] for block math. MathJax will render it in the exported document.
+                  </p>
+                </div>
+              </section>
+            )}
 
             {mode === 'text' && (
               <section className="space-y-4">

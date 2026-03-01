@@ -39,7 +39,10 @@ Rules:
 5. GRAPHS & DIAGRAMS (FIGURES ONLY):
    - Identify every actual drawing (axes, curves, sketches).
    - Determine its exact bounding box in [ymin, xmin, ymax, xmax] format (normalized 0-1000).
-   - Generate a COMPREHENSIVE alt text description for blind students. Include details about axes, labels, and the general shape of curves.
+   - Generate a COMPREHENSIVE alt text description for blind students. 
+   - MATHEMATICAL PRECISION: Use LaTeX (wrapped in \( ... \)) for complex mathematical expressions within the alt text to ensure visual rendering in captions.
+   - ACCESSIBILITY: Also provide a clear, spoken-word description of the math (e.g., "the square root of x") to ensure screen reader compatibility.
+   - VISUAL STRUCTURE: Describe the overall layout (e.g., "A Cartesian coordinate system"), then specific components (axes, labels, curves), and finally the mathematical meaning.
    - In the HTML, place an <img> tag with a matching ID: <img id="fig_ID" alt="[COMPREHENSIVE DESCRIPTION]">.
 
 6. OUTPUT FORMAT: Return ONLY a JSON object:
@@ -193,7 +196,7 @@ export const recreateFigure = async (base64Image: string, alt: string): Promise<
           2. USE clean, sharp lines and standard mathematical fonts for all labels.
           3. ENSURE high contrast (black lines on white background).
           4. PRESERVE all mathematical accuracy from the original.
-          5. The figure is described as: ${alt}.
+          5. The figure is described as: ${alt}. (Note: The description may contain LaTeX or spoken math; interpret it to recreate the diagram accurately).
           
           Return only the recreated digital image.` }
         ]
@@ -212,6 +215,38 @@ export const recreateFigure = async (base64Image: string, alt: string): Promise<
     return recreatedBase64;
   } catch (error: any) {
     console.error('Recreation error:', error);
+    throw error;
+  }
+};
+
+export const describeFigure = async (base64Image: string): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: {
+        parts: [
+          { inlineData: { mimeType: 'image/png', data: base64Image.split(',')[1] || base64Image } },
+          { text: `Generate a highly accessible, comprehensive description of this mathematical figure for a blind student.
+          
+          RULES:
+          1. STRUCTURE: Start with a high-level summary, then describe the axes/layout, then specific curves/data points, and finally the mathematical significance.
+          2. MATHEMATICAL PRECISION: Use LaTeX (wrapped in \\( ... \\)) for all mathematical expressions.
+          3. SPOKEN MATH: Immediately following any LaTeX, provide a clear spoken-word equivalent in parentheses (e.g., "the integral from 0 to infinity").
+          4. BE DESCRIPTIVE: Describe shapes, slopes, intersections, and labels in detail.
+          
+          Return ONLY the description text.` }
+        ]
+      },
+      config: {
+        temperature: 0.2,
+        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
+      }
+    });
+
+    return response.text?.trim() || "";
+  } catch (error: any) {
+    console.error('Description error:', error);
     throw error;
   }
 };
