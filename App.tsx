@@ -297,7 +297,7 @@ const App: React.FC = () => {
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
                   </button>
                 </div>
-                <figcaption class="mt-4 text-[10px] text-slate-400 font-sans text-center italic" aria-hidden="true">
+                <figcaption class="mt-4 text-sm text-slate-700 font-sans text-center italic" aria-hidden="true">
                   Figure: ${figResult.alt}
                 </figcaption>
               </figure>
@@ -538,7 +538,7 @@ const App: React.FC = () => {
         figcaption {
             font-family: 'Inter', sans-serif;
             font-size: 0.875rem;
-            color: #64748b;
+            color: #334155;
             margin-top: 1.5rem;
             font-style: italic;
             font-weight: 500;
