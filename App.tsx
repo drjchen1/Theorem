@@ -243,7 +243,7 @@ const App: React.FC = () => {
       progress: 0,
       results: [],
       error: null,
-      statusMessage: 'Reading PDF...'
+      statusMessage: 'Reading file...'
     });
 
     try {
@@ -423,39 +423,6 @@ const App: React.FC = () => {
             font-size: 1.125rem;
         }
 
-        .document-header { 
-            padding: 6rem 2rem 4rem; 
-            text-align: left; 
-            max-width: 800px; 
-            margin: 0 auto;
-            border-bottom: 1px solid #e2e8f0;
-        }
-
-        .document-title { 
-            font-family: 'Inter', sans-serif;
-            font-size: 3.5rem; 
-            font-weight: 900; 
-            color: var(--heading-color); 
-            margin: 1rem 0; 
-            line-height: 1;
-            letter-spacing: -0.04em;
-        }
-
-        .document-meta { 
-            color: #64748b; 
-            font-size: 0.8rem; 
-            font-family: 'Inter', sans-serif;
-            font-weight: 700; 
-            text-transform: uppercase; 
-            letter-spacing: 0.1em; 
-        }
-
-        .container { 
-            max-width: 800px; 
-            margin: 0 auto; 
-            padding: 4rem 2rem 12rem; 
-        }
-
         article { 
             margin-bottom: 6rem; 
             position: relative; 
@@ -571,23 +538,18 @@ const App: React.FC = () => {
     </style>
 </head>
 <body>
-    <header class="document-header">
-      <div class="document-meta">${metaTop}</div>
-      <h1 class="document-title">${extractedTitle}</h1>
-      <div class="document-meta">Processed ${timestamp}</div>
-      ${originalFileName ? `
-      <div class="mt-8 no-print">
-        <a href="${originalFileName}" class="inline-flex items-center gap-2 px-5 py-2.5 bg-[#ceb888] text-[#1a1a1a] rounded font-bold text-sm hover:bg-[#bda67a] transition-colors shadow-sm no-underline">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          Download Original Handwritten Notes
-        </a>
-      </div>` : ''}
-    </header>
-    <main class="container">
-        ${cleanResults.map(r => `
+    <main class="container" style="max-width: 800px; margin: 0 auto; padding: 4rem 2rem 12rem;">
+        ${cleanResults.map((r, idx) => `
         <article id="page-${r.pageNumber}" role="region">
+            ${idx === 0 && originalFileName ? `
+            <div class="no-print" style="position: absolute; top: 0; right: 0;">
+                <a href="${originalFileName}" class="inline-flex items-center gap-2 px-5 py-2.5 bg-[#CFB991] text-black rounded-xl font-black text-[11px] hover:bg-[#B19B69] transition-all border-2 border-black no-underline tracking-widest shadow-xl transform hover:-translate-y-0.5 active:translate-y-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Download original notes
+                </a>
+            </div>` : ''}
             <span class="page-badge">PAGE ${r.pageNumber}</span>
             <div class="math-content">
                 ${r.html}
@@ -750,8 +712,8 @@ const App: React.FC = () => {
               <div className="flex gap-4">
                 <div className="flex-shrink-0 w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-xs font-black text-slate-400">01</div>
                 <div>
-                  <h4 className="font-bold text-slate-900 mb-1">Upload Scans</h4>
-                  <p className="text-sm text-slate-500 leading-relaxed">Upload a PDF containing handwritten mathematics. For best results, ensure the scans are clear and well-lit.</p>
+                  <h4 className="font-bold text-slate-900 mb-1">Upload Files</h4>
+                  <p className="text-sm text-slate-500 leading-relaxed">Upload a PDF, image (JPG, PNG, HEIC), or text file containing mathematics. For best results, ensure scans are clear.</p>
                 </div>
               </div>
               <div className="flex gap-4">
@@ -814,8 +776,8 @@ const App: React.FC = () => {
             </div>
 
             <label className="inline-flex items-center gap-4 px-12 py-6 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl shadow-xl transition-all cursor-pointer">
-              <span>Upload PDF Scans</span>
-              <input type="file" className="sr-only" accept="application/pdf" onChange={handleFileUpload} />
+              <span>Upload File</span>
+              <input type="file" className="sr-only" accept="application/pdf,image/*,.heic,.heif,.txt" onChange={handleFileUpload} />
             </label>
           </div>
         ) : (
@@ -874,8 +836,6 @@ const App: React.FC = () => {
                 <div className="space-y-2">
                    <button onClick={handleBatchEdit} className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-bold hover:bg-slate-800">BATCH EDIT FIGURES</button>
                    <button onClick={handleDownloadHtml} className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-bold hover:bg-indigo-700">DOWNLOAD HTML</button>
-                   <button onClick={handlePrint} className="w-full py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl text-[10px] font-bold hover:bg-slate-50">PRINT TO PDF</button>
-                   <button onClick={handleDownloadOriginal} className="w-full py-2.5 bg-slate-100 text-slate-600 rounded-xl text-[10px] font-bold hover:bg-slate-200">ORIGINAL PDF</button>
                 </div>
               </div>
 
