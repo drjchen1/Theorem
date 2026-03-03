@@ -1,8 +1,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Crop, Sun, Contrast, Pencil, Save, RotateCcw, Download, Sparkles, Loader2, LineChart, Plus, ChevronLeft, ChevronRight, CheckCircle2, Type, SlidersHorizontal, Palette, Trash2 } from 'lucide-react';
+import { X, Crop, Sun, Contrast, Pencil, Save, RotateCcw, Download, Sparkles, Loader2, LineChart, Plus, ChevronLeft, ChevronRight, CheckCircle2, Type, SlidersHorizontal, Palette, Trash2, Sigma, MessageSquareText } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { recreateFigure, generateGraph, describeFigure } from '../services/geminiService';
+import { recreateFigure, generateGraph, describeFigure, touchUpImage } from '../services/geminiService';
 
 interface TextAnnotation {
   id: string;
@@ -43,12 +43,14 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
   
   const [adjustments, setAdjustments] = useState<Record<string, FigureAdjustments>>({});
   const [color, setColor] = useState('#4f46e5');
-  const [mode, setMode] = useState<'view' | 'crop' | 'draw' | 'graph' | 'text' | 'adjust' | 'accessibility'>('view');
+  const [mode, setMode] = useState<'view' | 'crop' | 'draw' | 'graph' | 'text' | 'adjust' | 'accessibility' | 'ai-prompt'>('view');
   const [isDrawing, setIsDrawing] = useState(false);
   const [isRecreating, setIsRecreating] = useState(false);
   const [isDescribing, setIsDescribing] = useState(false);
   const [isGeneratingGraph, setIsGeneratingGraph] = useState(false);
+  const [isPromptRecreating, setIsPromptRecreating] = useState(false);
   const [equations, setEquations] = useState<string>('');
+  const [aiPrompt, setAiPrompt] = useState<string>('');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const altPreviewRef = useRef<HTMLDivElement>(null);
@@ -81,7 +83,10 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
 
   useEffect(() => {
     if (mode === 'accessibility' && altPreviewRef.current && (window as any).MathJax) {
-      (window as any).MathJax.typesetPromise([altPreviewRef.current]).catch((err: any) => console.error('MathJax error:', err));
+      const timer = setTimeout(() => {
+        (window as any).MathJax.typesetPromise([altPreviewRef.current]).catch((err: any) => console.error('MathJax error:', err));
+      }, 100);
+      return () => clearTimeout(timer);
     }
   }, [mode, currentIndex, altTexts]);
 
@@ -291,6 +296,29 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
       alert('Failed to generate graph. Please try again.');
     } finally {
       setIsGeneratingGraph(false);
+    }
+  };
+
+  const handlePromptRecreate = async () => {
+    if (!aiPrompt.trim()) {
+      alert('Please enter a description for the AI.');
+      return;
+    }
+    setIsPromptRecreating(true);
+    try {
+      const srcToUse = editedSrcs[currentFigure.id] || currentFigure.src;
+      const newSrc = await touchUpImage(srcToUse, aiPrompt);
+      setEditedSrcs(prev => ({ ...prev, [currentFigure.id]: newSrc }));
+      setAdjustments(prev => ({
+        ...prev,
+        [currentFigure.id]: { brightness: 100, contrast: 100, saturate: 100, red: 100, green: 100, blue: 100, gamma: 1 }
+      }));
+      setMode('view');
+    } catch (error) {
+      console.error('AI Prompt recreation failed:', error);
+      alert('Failed to recreate figure with AI prompt. Please try again.');
+    } finally {
+      setIsPromptRecreating(false);
     }
   };
 
@@ -656,6 +684,13 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
                   <span className="text-[9px] font-bold">Graph</span>
                 </button>
                 <button 
+                  onClick={() => setMode('ai-prompt')}
+                  className={`p-3 rounded-xl flex flex-col items-center gap-2 transition-all ${mode === 'ai-prompt' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-100 hover:border-slate-300'}`}
+                >
+                  <MessageSquareText className="w-5 h-5" />
+                  <span className="text-[9px] font-bold">AI Prompt</span>
+                </button>
+                <button 
                   onClick={() => setMode('accessibility')}
                   className={`p-3 rounded-xl flex flex-col items-center gap-2 transition-all ${mode === 'accessibility' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-100 hover:border-slate-300'}`}
                 >
@@ -691,6 +726,32 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
               </section>
             )}
 
+            {mode === 'ai-prompt' && (
+              <section className="space-y-4">
+                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">AI Prompt Recreator</h3>
+                <div className="space-y-3">
+                  <label className="text-[10px] font-bold text-slate-600">Describe the figure</label>
+                  <textarea
+                    value={aiPrompt}
+                    onChange={(e) => setAiPrompt(e.target.value)}
+                    className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs min-h-[100px] focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+                    placeholder="e.g., A clean digital version of this triangle with labels A, B, C and a right angle marker."
+                  />
+                  <button
+                    onClick={handlePromptRecreate}
+                    disabled={isPromptRecreating || !aiPrompt.trim()}
+                    className="w-full py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-indigo-200 transition-all active:scale-95"
+                  >
+                    {isPromptRecreating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                    Recreate with AI
+                  </button>
+                  <p className="text-[9px] text-slate-400 leading-relaxed italic">
+                    Tip: Describe exactly what you want to see. The AI will use your current figure as a reference to generate a new digital version.
+                  </p>
+                </div>
+              </section>
+            )}
+
             {mode === 'accessibility' && (
               <section className="space-y-4">
                 <div className="flex items-center justify-between mb-4">
@@ -705,21 +766,59 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
                   </button>
                 </div>
                 <div className="space-y-3">
-                  <label className="text-[10px] font-bold text-slate-600">Description</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-slate-600">Description</label>
+                    <div className="flex gap-1">
+                      <button 
+                        onClick={() => {
+                          const textarea = document.querySelector('textarea');
+                          if (textarea) {
+                            const start = textarea.selectionStart;
+                            const end = textarea.selectionEnd;
+                            const text = textarea.value;
+                            const newText = text.substring(0, start) + '\\(' + text.substring(start, end) + '\\)' + text.substring(end);
+                            setAltTexts(prev => ({ ...prev, [currentFigure.id]: newText }));
+                          }
+                        }}
+                        className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-[9px] font-black rounded-md text-slate-600 transition-colors"
+                        title="Insert inline math"
+                      >
+                        \( ... \)
+                      </button>
+                      <button 
+                        onClick={() => {
+                          const textarea = document.querySelector('textarea');
+                          if (textarea) {
+                            const start = textarea.selectionStart;
+                            const end = textarea.selectionEnd;
+                            const text = textarea.value;
+                            const newText = text.substring(0, start) + '\\[' + text.substring(start, end) + '\\]' + text.substring(end);
+                            setAltTexts(prev => ({ ...prev, [currentFigure.id]: newText }));
+                          }
+                        }}
+                        className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-[9px] font-black rounded-md text-slate-600 transition-colors"
+                        title="Insert block math"
+                      >
+                        \[ ... \]
+                      </button>
+                    </div>
+                  </div>
                   <textarea
                     value={altTexts[currentFigure.id] ?? currentFigure.alt}
                     onChange={(e) => setAltTexts(prev => ({ ...prev, [currentFigure.id]: e.target.value }))}
-                    className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs min-h-[120px] focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all"
+                    className="w-full p-3 bg-white border border-slate-200 rounded-xl text-xs min-h-[120px] focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all font-sans"
                     placeholder="Describe the figure for screen readers..."
                   />
                   <div className="p-3 bg-indigo-50 rounded-xl border border-indigo-100">
-                    <h4 className="text-[9px] font-black text-indigo-600 uppercase tracking-widest mb-2">Math Preview</h4>
-                    <div ref={altPreviewRef} className="text-[11px] text-slate-700 leading-relaxed">
+                    <h4 className="text-[9px] font-black text-indigo-600 uppercase tracking-widest mb-2 flex items-center gap-2">
+                      <Sigma size={10} /> Math Preview
+                    </h4>
+                    <div ref={altPreviewRef} className="text-[11px] text-slate-700 leading-relaxed min-h-[1.5rem]">
                       {altTexts[currentFigure.id] ?? currentFigure.alt}
                     </div>
                   </div>
                   <p className="text-[9px] text-slate-400 leading-relaxed italic">
-                    Tip: Use \( ... \) for inline math and \[ ... \] for block math. MathJax will render it in the exported document.
+                    Tip: Use <code className="bg-slate-100 px-1 rounded">\( ... \)</code> for inline math. MathJax will render it in the exported document.
                   </p>
                 </div>
               </section>

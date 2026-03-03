@@ -95,15 +95,18 @@ const App: React.FC = () => {
           const figure = img?.closest('figure');
           
           if (img && figure) {
-            const cleanAlt = (newAlt || updatedFig.alt).replace(/\\\(|\\\)|\\\[|\\\]/g, '').replace(/"/g, '&quot;');
+            // Preserve delimiters in alt text for screen readers that support them
+            const cleanAlt = (newAlt || updatedFig.alt).replace(/"/g, '&quot;');
             img.setAttribute('src', newSrc);
             img.setAttribute('alt', cleanAlt);
             figure.setAttribute('aria-label', `Visual figure: ${cleanAlt}`);
             
-            const figcaption = figure.querySelector('figcaption');
-            if (figcaption) {
-              figcaption.innerHTML = `Figure: ${newAlt || updatedFig.alt}`;
+            let figcaption = figure.querySelector('figcaption');
+            if (!figcaption) {
+              figcaption = doc.createElement('figcaption');
+              figure.appendChild(figcaption);
             }
+            figcaption.innerHTML = `Figure: ${newAlt || updatedFig.alt}`;
             
             page.html = doc.body.innerHTML;
           }
@@ -450,16 +453,64 @@ const App: React.FC = () => {
                 gap: 6rem;
                 align-items: start;
                 padding-top: 4rem;
+                transition: all 0.3s ease;
+            }
+            .layout.sidebar-hidden {
+                grid-template-columns: 1fr;
+                gap: 0;
             }
             .sidebar {
                 position: sticky;
                 top: 4rem;
                 display: block !important;
             }
+            .sidebar.hidden {
+                display: none !important;
+            }
+            .content-expanded {
+                max-width: 1000px;
+                margin: 0 auto;
+            }
         }
 
         .sidebar {
             display: none;
+        }
+
+        .toggle-sidebar-btn {
+            position: fixed;
+            bottom: 2rem;
+            left: 2rem;
+            z-index: 50;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 9999px;
+            width: 3.5rem;
+            height: 3.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            transition: all 0.2s;
+        }
+
+        .toggle-sidebar-btn:hover {
+            transform: scale(1.1);
+            background: var(--link-color);
+        }
+
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border-width: 0;
         }
 
         .sidebar-title {
@@ -608,9 +659,14 @@ const App: React.FC = () => {
     </style>
 </head>
 <body>
+    <button id="sidebar-toggle" class="no-print toggle-sidebar-btn" aria-label="Toggle navigation sidebar" aria-expanded="true" aria-controls="sidebar-nav">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+    </button>
     <div class="container">
-        <div class="layout">
-            <nav class="sidebar no-print" aria-label="Document navigation">
+        <div id="main-layout" class="layout">
+            <nav id="sidebar-nav" class="sidebar no-print" aria-label="Document navigation">
                 <div class="sidebar-title">Contents</div>
                 <ul class="sidebar-nav">
                     ${cleanResults.map(r => `
@@ -620,7 +676,7 @@ const App: React.FC = () => {
             </nav>
             <main class="content" style="padding-bottom: 12rem;">
                 ${cleanResults.map((r, idx) => `
-                <article id="page-${r.pageNumber}" role="region">
+                <article id="page-${r.pageNumber}" role="region" class="page-article">
                     ${idx === 0 && originalFileName ? `
                     <div class="no-print" style="position: absolute; top: 0; right: 0;">
                         <a href="${originalFileName}" class="inline-flex items-center gap-2 px-5 py-2.5 bg-[#CFB991] text-black rounded-xl font-black text-[11px] hover:bg-[#B19B69] transition-all border-2 border-black no-underline tracking-widest shadow-xl transform hover:-translate-y-0.5 active:translate-y-0">
@@ -638,6 +694,37 @@ const App: React.FC = () => {
             </main>
         </div>
     </div>
+    <script>
+        const toggleBtn = document.getElementById('sidebar-toggle');
+        const layout = document.getElementById('main-layout');
+        const sidebar = document.getElementById('sidebar-nav');
+        const articles = document.querySelectorAll('.page-article');
+
+        toggleBtn.addEventListener('click', () => {
+            const isHidden = sidebar.classList.toggle('hidden');
+            layout.classList.toggle('sidebar-hidden');
+            toggleBtn.setAttribute('aria-expanded', !isHidden);
+            
+            articles.forEach(article => {
+                if (isHidden) {
+                    article.classList.add('content-expanded');
+                } else {
+                    article.classList.remove('content-expanded');
+                }
+            });
+        });
+
+        // Hide toggle on mobile as sidebar is already hidden
+        function checkMobile() {
+            if (window.innerWidth < 1024) {
+                toggleBtn.style.display = 'none';
+            } else {
+                toggleBtn.style.display = 'flex';
+            }
+        }
+        window.addEventListener('resize', checkMobile);
+        checkMobile();
+    </script>
 </body>
 </html>`;
 
