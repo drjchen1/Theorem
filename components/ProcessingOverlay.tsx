@@ -7,6 +7,8 @@ interface ProcessingOverlayProps {
   progress: number;
   status: string;
   elapsedTime?: number;
+  sessionRequestCount?: number;
+  dailyRequestCount?: number;
 }
 
 const FloatingMath = () => {
@@ -42,7 +44,9 @@ const FloatingMath = () => {
   );
 };
 
-const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({ progress, status, elapsedTime }) => {
+const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({ progress, status, elapsedTime, sessionRequestCount, dailyRequestCount }) => {
+  const rpm = elapsedTime && sessionRequestCount ? Math.round((sessionRequestCount / (elapsedTime / 60)) * 10) / 10 : 0;
+  
   return (
     <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-2xl z-50 flex flex-col items-center justify-center p-6 text-center">
       <motion.div 
@@ -95,9 +99,21 @@ const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({ progress, status,
                   </motion.div>
                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-1 block">Digitizing</span>
                   {elapsedTime !== undefined && (
-                    <span className="text-[10px] font-bold text-indigo-500 mt-2 block tabular-nums">
-                      {elapsedTime}s elapsed
-                    </span>
+                    <div className="mt-2 space-y-0.5">
+                      <span className="text-[9px] font-bold text-indigo-500 block tabular-nums">
+                        {elapsedTime}s elapsed
+                      </span>
+                      {rpm > 0 && (
+                        <span className="text-[8px] font-bold text-slate-400 block tabular-nums">
+                          {rpm} RPM
+                        </span>
+                      )}
+                      {dailyRequestCount !== undefined && (
+                        <span className="text-[8px] font-bold text-slate-400 block tabular-nums">
+                          {dailyRequestCount} RPD
+                        </span>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>

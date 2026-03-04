@@ -45,6 +45,8 @@ export interface AppState {
   error: string | null;
   statusMessage: string;
   totalTime?: number;
+  sessionRequestCount: number;
+  dailyRequestCount: number;
 }
 
 declare global {

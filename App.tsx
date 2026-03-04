@@ -15,8 +15,38 @@ const App: React.FC = () => {
     progress: 0,
     results: [],
     error: null,
-    statusMessage: 'Waiting for upload...'
+    statusMessage: 'Waiting for upload...',
+    sessionRequestCount: 0,
+    dailyRequestCount: 0
   });
+
+  useEffect(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const stored = localStorage.getItem('qed_daily_requests');
+    if (stored) {
+      const { date, count } = JSON.parse(stored);
+      if (date === today) {
+        setState(prev => ({ ...prev, dailyRequestCount: count }));
+      } else {
+        localStorage.setItem('qed_daily_requests', JSON.stringify({ date: today, count: 0 }));
+      }
+    } else {
+      localStorage.setItem('qed_daily_requests', JSON.stringify({ date: today, count: 0 }));
+    }
+  }, []);
+
+  const incrementRequestCount = () => {
+    setState(prev => {
+      const newDailyCount = prev.dailyRequestCount + 1;
+      const today = new Date().toISOString().split('T')[0];
+      localStorage.setItem('qed_daily_requests', JSON.stringify({ date: today, count: newDailyCount }));
+      return {
+        ...prev,
+        sessionRequestCount: prev.sessionRequestCount + 1,
+        dailyRequestCount: newDailyCount
+      };
+    });
+  };
 
   const [originalFile, setOriginalFile] = useState<File | null>(null);
   const [viewMode, setViewMode] = useState<'preview' | 'source'>('preview');
@@ -80,6 +110,7 @@ const App: React.FC = () => {
     setIsRefining(true);
     try {
       const page = state.results[activeTab];
+      incrementRequestCount();
       const refinedHtml = await refineLatex(page.html);
       
       const newResults = [...state.results];
@@ -277,13 +308,15 @@ const App: React.FC = () => {
 
     setOriginalFile(file);
     const startTime = Date.now();
-    setState({
+    setState(prev => ({
+      ...prev,
       isProcessing: true,
       progress: 0,
       results: [],
       error: null,
-      statusMessage: 'Reading file...'
-    });
+      statusMessage: 'Reading file...',
+      sessionRequestCount: 0
+    }));
 
     try {
       const pageData = await pdfToImageData(file);
@@ -313,6 +346,7 @@ const App: React.FC = () => {
             statusMessage: `Digitizing Page ${i + 1} of ${totalPages}...`,
           }));
 
+          incrementRequestCount();
           const geminiResponse = await convertPageToHtml(pageData[i].base64, i + 1, languageLevel);
           updateProgress(80);
           
@@ -796,7 +830,15 @@ const App: React.FC = () => {
     <div className="min-h-screen flex flex-col bg-white">
       <Header onShowDocs={() => setShowHelp(true)} />
       
-      {state.isProcessing && <ProcessingOverlay progress={state.progress} status={state.statusMessage} elapsedTime={elapsedTime} />}
+      {state.isProcessing && (
+        <ProcessingOverlay 
+          progress={state.progress} 
+          status={state.statusMessage} 
+          elapsedTime={elapsedTime} 
+          sessionRequestCount={state.sessionRequestCount}
+          dailyRequestCount={state.dailyRequestCount}
+        />
+      )}
 
       {showAuditReport && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
@@ -821,7 +863,17 @@ const App: React.FC = () => {
                   <h2 className="text-3xl font-black text-slate-900 tracking-tight">Accessibility Audit</h2>
                   <p className="text-slate-500 font-medium">WCAG 2.2 AA Compliance Report for Page {activeTab + 1}</p>
                   {state.totalTime && (
-                    <p className="text-indigo-600 font-bold text-xs mt-1 uppercase tracking-widest">Total Processing Time: {state.totalTime}s</p>
+                    <div className="mt-2 space-y-1">
+                      <p className="text-indigo-600 font-bold text-xs uppercase tracking-widest">Total Processing Time: {state.totalTime}s</p>
+                      <div className="flex gap-4">
+                        <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">
+                          {state.sessionRequestCount} Requests ({Math.round((state.sessionRequestCount / (state.totalTime / 60)) * 10) / 10} RPM)
+                        </p>
+                        <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">
+                          {state.dailyRequestCount} Daily Requests
+                        </p>
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
@@ -972,6 +1024,7 @@ const App: React.FC = () => {
             figures={editingFigures}
             onSave={saveEditedFigures}
             onClose={() => setEditingFigures(null)}
+            onApiCall={incrementRequestCount}
           />
         )}
       </AnimatePresence>

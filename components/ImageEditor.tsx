@@ -35,9 +35,10 @@ interface ImageEditorProps {
   figures: FigureToEdit[];
   onSave: (updates: { figureId: string, pageIndex: number, newSrc: string }[]) => void;
   onClose: () => void;
+  onApiCall?: () => void;
 }
 
-const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) => {
+const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose, onApiCall }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const currentFigure = figures[currentIndex];
   
@@ -243,6 +244,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
       
       for (const fig of targets) {
         const srcToUse = updates[fig.id] || fig.src;
+        onApiCall?.();
         const newSrc = await recreateFigure(srcToUse, fig.alt);
         newRecreated[fig.id] = newSrc;
         updates[fig.id] = newSrc;
@@ -267,6 +269,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
     setIsDescribing(true);
     try {
       const srcToUse = editedSrcs[currentFigure.id] || currentFigure.src;
+      onApiCall?.();
       const newDescription = await describeFigure(srcToUse);
       setAltTexts(prev => ({ ...prev, [currentFigure.id]: newDescription }));
     } catch (error) {
@@ -284,6 +287,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
     }
     setIsGeneratingGraph(true);
     try {
+      onApiCall?.();
       const newSrc = await generateGraph(equations);
       setEditedSrcs(prev => ({ ...prev, [currentFigure.id]: newSrc }));
       setAdjustments(prev => ({
@@ -307,6 +311,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose }) =
     setIsPromptRecreating(true);
     try {
       const srcToUse = editedSrcs[currentFigure.id] || currentFigure.src;
+      onApiCall?.();
       const newSrc = await touchUpImage(srcToUse, aiPrompt);
       setEditedSrcs(prev => ({ ...prev, [currentFigure.id]: newSrc }));
       setAdjustments(prev => ({
