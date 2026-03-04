@@ -6,6 +6,7 @@ import { Scan, FileText, Sparkles, Binary, FunctionSquare, Sigma } from 'lucide-
 interface ProcessingOverlayProps {
   progress: number;
   status: string;
+  elapsedTime?: number;
 }
 
 const FloatingMath = () => {
@@ -41,7 +42,7 @@ const FloatingMath = () => {
   );
 };
 
-const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({ progress, status }) => {
+const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({ progress, status, elapsedTime }) => {
   return (
     <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-2xl z-50 flex flex-col items-center justify-center p-6 text-center">
       <motion.div 
@@ -93,6 +94,11 @@ const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({ progress, status 
                     <span className="text-xl font-black text-indigo-600 ml-0.5">%</span>
                   </motion.div>
                   <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mt-1 block">Digitizing</span>
+                  {elapsedTime !== undefined && (
+                    <span className="text-[10px] font-bold text-indigo-500 mt-2 block tabular-nums">
+                      {elapsedTime}s elapsed
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

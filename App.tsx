@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { AnimatePresence } from 'framer-motion';
+import JSZip from 'jszip';
 import Header from './components/Header';
 import ProcessingOverlay from './components/ProcessingOverlay';
 import ImageEditor from './components/ImageEditor';
@@ -25,7 +26,21 @@ const App: React.FC = () => {
   const [languageLevel, setLanguageLevel] = useState<LanguageLevel>('faithful');
   const [editingFigures, setEditingFigures] = useState<{ id: string, src: string, originalSrc: string, alt: string, pageIndex: number }[] | null>(null);
   const [isRefining, setIsRefining] = useState(false);
+  const [elapsedTime, setElapsedTime] = useState(0);
   const contentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let interval: any;
+    if (state.isProcessing) {
+      const startTime = Date.now();
+      interval = setInterval(() => {
+        setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
+      }, 1000);
+    } else {
+      setElapsedTime(0);
+    }
+    return () => clearInterval(interval);
+  }, [state.isProcessing]);
 
   useEffect(() => {
     if (window.MathJax && state.results.length > 0 && contentRef.current) {
@@ -261,6 +276,7 @@ const App: React.FC = () => {
     if (!file) return;
 
     setOriginalFile(file);
+    const startTime = Date.now();
     setState({
       isProcessing: true,
       progress: 0,
@@ -378,11 +394,14 @@ const App: React.FC = () => {
       }
       await Promise.all(pool);
 
+      const totalTime = Math.floor((Date.now() - startTime) / 1000);
+
       setState(prev => ({ 
         ...prev, 
         isProcessing: false, 
         statusMessage: 'Digitization Complete! Your accessible document is ready.',
-        progress: 100
+        progress: 100,
+        totalTime
       }));
       setActiveTab(0);
     } catch (err: any) {
@@ -777,7 +796,7 @@ const App: React.FC = () => {
     <div className="min-h-screen flex flex-col bg-white">
       <Header onShowDocs={() => setShowHelp(true)} />
       
-      {state.isProcessing && <ProcessingOverlay progress={state.progress} status={state.statusMessage} />}
+      {state.isProcessing && <ProcessingOverlay progress={state.progress} status={state.statusMessage} elapsedTime={elapsedTime} />}
 
       {showAuditReport && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
@@ -801,6 +820,9 @@ const App: React.FC = () => {
                 <div>
                   <h2 className="text-3xl font-black text-slate-900 tracking-tight">Accessibility Audit</h2>
                   <p className="text-slate-500 font-medium">WCAG 2.2 AA Compliance Report for Page {activeTab + 1}</p>
+                  {state.totalTime && (
+                    <p className="text-indigo-600 font-bold text-xs mt-1 uppercase tracking-widest">Total Processing Time: {state.totalTime}s</p>
+                  )}
                 </div>
               </div>
               

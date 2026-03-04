@@ -44,6 +44,7 @@ export interface AppState {
   results: ConversionResult[];
   error: string | null;
   statusMessage: string;
+  totalTime?: number;
 }
 
 declare global {
