@@ -1,15 +1,23 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import JSZip from 'jszip';
 import Header from './components/Header';
 import ProcessingOverlay from './components/ProcessingOverlay';
 import ImageEditor from './components/ImageEditor';
+import Sidebar from './components/Sidebar';
+import DocumentViewer from './components/DocumentViewer';
+import PageNavigation from './components/PageNavigation';
+import AccessibilityReport from './components/AccessibilityReport';
 import { pdfToImageData } from './services/pdfService';
 import { convertPageToHtml, recreateFigure, refineLatex } from './services/geminiService';
-import { FigureResult, ConversionResult, AppState, Figure, AccessibilityAudit, LanguageLevel } from './types';
+import { FigureResult, ConversionResult, AppState, LanguageLevel } from './types';
+import { useRequestStats } from './hooks/useRequestStats';
+import { useProcessingTimer } from './hooks/useProcessingTimer';
+import { runAccessibilityAudit } from './utils/accessibility';
+import { cropImage } from './utils/imageUtils';
 
 const App: React.FC = () => {
+  const { sessionCount, dailyCount, increment: incrementRequestCount } = useRequestStats();
   const [state, setState] = useState<AppState>({
     isProcessing: false,
     progress: 0,
@@ -20,33 +28,10 @@ const App: React.FC = () => {
     dailyRequestCount: 0
   });
 
+  // Sync state with hook
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
-    const stored = localStorage.getItem('qed_daily_requests');
-    if (stored) {
-      const { date, count } = JSON.parse(stored);
-      if (date === today) {
-        setState(prev => ({ ...prev, dailyRequestCount: count }));
-      } else {
-        localStorage.setItem('qed_daily_requests', JSON.stringify({ date: today, count: 0 }));
-      }
-    } else {
-      localStorage.setItem('qed_daily_requests', JSON.stringify({ date: today, count: 0 }));
-    }
-  }, []);
-
-  const incrementRequestCount = () => {
-    setState(prev => {
-      const newDailyCount = prev.dailyRequestCount + 1;
-      const today = new Date().toISOString().split('T')[0];
-      localStorage.setItem('qed_daily_requests', JSON.stringify({ date: today, count: newDailyCount }));
-      return {
-        ...prev,
-        sessionRequestCount: prev.sessionRequestCount + 1,
-        dailyRequestCount: newDailyCount
-      };
-    });
-  };
+    setState(prev => ({ ...prev, sessionRequestCount: sessionCount, dailyRequestCount: dailyCount }));
+  }, [sessionCount, dailyCount]);
 
   const [originalFile, setOriginalFile] = useState<File | null>(null);
   const [viewMode, setViewMode] = useState<'preview' | 'source' | 'latex'>('preview');
@@ -56,21 +41,8 @@ const App: React.FC = () => {
   const [languageLevel, setLanguageLevel] = useState<LanguageLevel>('faithful');
   const [editingFigures, setEditingFigures] = useState<{ id: string, src: string, originalSrc: string, alt: string, pageIndex: number }[] | null>(null);
   const [isRefining, setIsRefining] = useState(false);
-  const [elapsedTime, setElapsedTime] = useState(0);
+  const elapsedTime = useProcessingTimer(state.isProcessing);
   const contentRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    let interval: any;
-    if (state.isProcessing) {
-      const startTime = Date.now();
-      interval = setInterval(() => {
-        setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
-      }, 1000);
-    } else {
-      setElapsedTime(0);
-    }
-    return () => clearInterval(interval);
-  }, [state.isProcessing]);
 
   useEffect(() => {
     if (window.MathJax && state.results.length > 0 && contentRef.current) {
@@ -204,122 +176,6 @@ const App: React.FC = () => {
     setEditingFigures(null);
   };
 
-  const runAccessibilityAudit = (html: string): AccessibilityAudit => {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    const checks = [];
-
-    // Check 1: Alt text for all images/figures (1.1.1)
-    const images = Array.from(doc.querySelectorAll('img'));
-    const allImagesHaveAlt = images.length === 0 || images.every(img => {
-      const alt = img.getAttribute('alt');
-      return alt && alt.trim().length > 0;
-    });
-    checks.push({
-      title: 'Alt Text (1.1.1)',
-      passed: allImagesHaveAlt,
-      description: 'All visual figures must have descriptive alternative text for screen readers.',
-      suggestion: allImagesHaveAlt ? undefined : 'Use the Figure Editor to add descriptive alt text to all images.'
-    });
-
-    // Check 2: Heading Structure (1.3.1) - Sequential Order
-    const headings = Array.from(doc.querySelectorAll('h1, h2, h3, h4, h5, h6'));
-    let headingOrderValid = true;
-    let lastLevel = 0;
-    for (const h of headings) {
-      const level = parseInt(h.tagName[1]);
-      if (level > lastLevel + 1 && lastLevel !== 0) {
-        headingOrderValid = false;
-        break;
-      }
-      lastLevel = level;
-    }
-    const hasH1 = headings.some(h => h.tagName === 'H1');
-    
-    checks.push({
-      title: 'Heading Order (1.3.1)',
-      passed: headingOrderValid && headings.length > 0 && hasH1,
-      description: 'Headings should follow a logical nested order (e.g., h1 followed by h2) without skipping levels.',
-      suggestion: !headings.length ? 'Add at least one <h1> heading.' : 
-                  !hasH1 ? 'Ensure the document starts with an <h1>.' :
-                  !headingOrderValid ? 'Fix skipped heading levels (e.g., don\'t jump from <h1> to <h3>).' : undefined
-    });
-
-    // Check 3: ARIA Landmarks (1.3.1)
-    const hasLandmarks = doc.querySelector('article, section, main, nav, header, footer') !== null;
-    checks.push({
-      title: 'Landmarks (1.3.1)',
-      passed: hasLandmarks,
-      description: 'Content is organized within semantic landmarks like <article> or <section> for easier navigation.',
-      suggestion: hasLandmarks ? undefined : 'Wrap main content in <article> or <section> tags.'
-    });
-
-    // Check 4: Color Contrast (1.4.3) - Simulation
-    const hasInlineColors = html.includes('style="color:') || html.includes('style="background:');
-    const hasLowContrastClasses = html.includes('text-slate-300') || html.includes('text-gray-300') || html.includes('text-zinc-300') || html.includes('text-slate-400');
-    const contrastPassed = !hasInlineColors && !hasLowContrastClasses;
-    
-    checks.push({
-      title: 'Contrast (1.4.3)',
-      passed: contrastPassed,
-      description: 'Text must have a contrast ratio of at least 4.5:1 against its background.',
-      suggestion: !contrastPassed ? 'Avoid light gray text or inline color styles that might be hard to read.' : undefined
-    });
-
-    // Check 5: Keyboard Navigation (2.1.1)
-    const interactive = Array.from(doc.querySelectorAll('a, button, details, [tabindex]'));
-    const noTabindexMinusOne = interactive.every(el => el.getAttribute('tabindex') !== '-1');
-    const allHaveLabels = interactive.every(el => {
-      const text = el.textContent?.trim();
-      const ariaLabel = el.getAttribute('aria-label');
-      const title = el.getAttribute('title');
-      return (text && text.length > 0) || (ariaLabel && ariaLabel.length > 0) || (title && title.length > 0);
-    });
-    
-    checks.push({
-      title: 'Keyboard (2.1.1)',
-      passed: noTabindexMinusOne && allHaveLabels,
-      description: 'All interactive elements must be reachable via keyboard and have descriptive labels.',
-      suggestion: !noTabindexMinusOne ? 'Remove tabindex="-1" from interactive elements.' :
-                  !allHaveLabels ? 'Add text or aria-labels to all buttons and links.' : undefined
-    });
-
-    // Check 6: Screen Reader (4.1.2)
-    const hasGroupRoles = doc.querySelectorAll('figure[role="group"]').length > 0;
-    checks.push({
-      title: 'Screen Reader (4.1.2)',
-      passed: images.length === 0 || hasGroupRoles,
-      description: 'Complex components like figures should use ARIA roles to describe their purpose.',
-      suggestion: (images.length > 0 && !hasGroupRoles) ? 'Ensure figures are wrapped in <figure role="group">.' : undefined
-    });
-
-    const passedCount = checks.filter(c => c.passed).length;
-    const score = Math.round((passedCount / checks.length) * 100);
-
-    return { score, checks };
-  };
-
-  const cropImage = (originalCanvas: HTMLCanvasElement, figure: Figure): string => {
-    const [ymin, xmin, ymax, xmax] = figure.box_2d;
-    const w = originalCanvas.width;
-    const h = originalCanvas.height;
-
-    const padding = 15;
-    const sx = Math.max(0, (xmin / 1000) * w - padding);
-    const sy = Math.max(0, (ymin / 1000) * h - padding);
-    const sWidth = Math.min(w - sx, ((xmax - xmin) / 1000) * w + padding * 2);
-    const sHeight = Math.min(h - sy, ((ymax - ymin) / 1000) * h + padding * 2);
-
-    const cropCanvas = document.createElement('canvas');
-    cropCanvas.width = sWidth;
-    cropCanvas.height = sHeight;
-    const ctx = cropCanvas.getContext('2d');
-    
-    if (!ctx) return '';
-    ctx.drawImage(originalCanvas, sx, sy, sWidth, sHeight, 0, 0, sWidth, sHeight);
-    return cropCanvas.toDataURL('image/png');
-  };
-
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -378,12 +234,14 @@ const App: React.FC = () => {
           // Process figures
           const figureResults: FigureResult[] = geminiResponse.figures.map((fig) => {
             const screenshotBase64 = cropImage(pageData[i].canvas, fig);
+            // Calculate proportional width (normalized 0-1000 coordinates)
+            const proportionalWidth = Math.min(100, Math.max(25, Math.round((fig.box_2d[3] - fig.box_2d[1]) / 10)));
             return {
               id: fig.id,
               originalSrc: screenshotBase64,
               currentSrc: screenshotBase64,
               alt: fig.alt,
-              width: '100%',
+              width: `${proportionalWidth}%`,
               alignment: 'center'
             };
           });
@@ -533,6 +391,10 @@ const App: React.FC = () => {
             --link-color: #4338ca;
         }
 
+        html {
+            scroll-behavior: smooth;
+        }
+
         body { 
             font-family: 'Inter', system-ui, sans-serif; 
             background-color: var(--bg); 
@@ -567,7 +429,7 @@ const App: React.FC = () => {
                 align-items: start;
                 padding-top: 4rem;
                 transition: all 0.3s ease;
-                max-width: ${docOrientation === 'landscape' ? '1400px' : '1400px'};
+                max-width: 1400px;
                 margin: 0 auto;
             }
             .layout.sidebar-hidden {
@@ -578,7 +440,7 @@ const App: React.FC = () => {
             .sidebar {
                 position: sticky;
                 top: 4rem;
-                display: ${docOrientation === 'landscape' ? 'none !important' : 'block !important'};
+                display: ${docOrientation === 'landscape' ? 'none' : 'block'};
             }
             .sidebar.hidden {
                 display: none !important;
@@ -835,10 +697,14 @@ const App: React.FC = () => {
             });
         });
 
-        // Hide toggle on mobile as sidebar is already hidden
+        // Hide toggle on mobile or if document is landscape
         function checkMobile() {
-            if (window.innerWidth < 1024) {
+            const isLandscape = ${docOrientation === 'landscape'};
+            if (window.innerWidth < 1024 || isLandscape) {
                 toggleBtn.style.display = 'none';
+                if (isLandscape) {
+                    layout.classList.add('sidebar-hidden');
+                }
             } else {
                 toggleBtn.style.display = 'flex';
             }
@@ -859,7 +725,6 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const activeAudit = state.results[activeTab]?.audit;
 
   return (
     <div className="min-h-screen flex flex-col bg-white">
@@ -875,127 +740,14 @@ const App: React.FC = () => {
         />
       )}
 
-      {showAuditReport && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-[2.5rem] shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col relative overflow-hidden">
-            <button 
-              onClick={() => setShowAuditReport(false)}
-              className="absolute top-8 right-8 text-slate-400 hover:text-slate-600 transition-colors z-10"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-
-            <div className="p-10 border-b border-slate-100">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-12 h-12 bg-indigo-600 text-white rounded-2xl flex items-center justify-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div>
-                  <h2 className="text-3xl font-black text-slate-900 tracking-tight">Accessibility Audit</h2>
-                  <p className="text-slate-500 font-medium">WCAG 2.2 AA Compliance Report for Page {activeTab + 1}</p>
-                  {state.totalTime && (
-                    <div className="mt-2 space-y-1">
-                      <p className="text-indigo-600 font-bold text-xs uppercase tracking-widest">Total Processing Time: {state.totalTime}s</p>
-                      <div className="flex gap-4">
-                        <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">
-                          {state.sessionRequestCount} Requests ({Math.round((state.sessionRequestCount / (state.totalTime / 60)) * 10) / 10} RPM)
-                        </p>
-                        <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">
-                          {state.dailyRequestCount} Daily Requests
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-6 mt-8">
-                <div className="flex-1">
-                  <div className="flex justify-between mb-2">
-                    <span className="text-sm font-black text-slate-900 uppercase tracking-widest">Compliance Score</span>
-                    <span className={`text-sm font-black ${activeAudit?.score === 100 ? 'text-green-600' : 'text-amber-600'}`}>{activeAudit?.score}%</span>
-                  </div>
-                  <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
-                    <div 
-                      className={`h-full transition-all duration-1000 ${activeAudit?.score === 100 ? 'bg-green-500' : 'bg-amber-500'}`}
-                      style={{ width: `${activeAudit?.score || 0}%` }}
-                    ></div>
-                  </div>
-                </div>
-                <div className={`px-6 py-3 rounded-2xl font-black text-lg ${activeAudit?.score === 100 ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
-                  {activeAudit?.score === 100 ? 'EXCELLENT' : 'IMPROVEMENT NEEDED'}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-10 space-y-8">
-              <section>
-                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">Detailed Checks</h3>
-                <div className="grid gap-4">
-                  {activeAudit?.checks.map((check, idx) => (
-                    <div key={idx} className={`p-6 rounded-3xl border ${check.passed ? 'bg-green-50/30 border-green-100' : 'bg-amber-50/30 border-amber-100'}`}>
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex gap-4">
-                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${check.passed ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'}`}>
-                            {check.passed ? (
-                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
-                            ) : (
-                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                            )}
-                          </div>
-                          <div>
-                            <h4 className="font-black text-slate-900 mb-1">{check.title}</h4>
-                            <p className="text-sm text-slate-500 leading-relaxed">{check.description}</p>
-                            {!check.passed && check.suggestion && (
-                              <div className="mt-4 p-4 bg-white border border-amber-200 rounded-2xl">
-                                <p className="text-xs font-black text-amber-700 uppercase tracking-widest mb-1">How to fix</p>
-                                <p className="text-sm text-slate-700 font-medium">{check.suggestion}</p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${check.passed ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                          {check.passed ? 'Passed' : 'Failed'}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              <section className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100">
-                <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest mb-4">About WCAG 2.2 AA</h3>
-                <p className="text-sm text-slate-500 leading-relaxed mb-4">
-                  Web Content Accessibility Guidelines (WCAG) 2.2 defines how to make Web content more accessible to people with disabilities. AA compliance is the standard level of accessibility for most commercial and government websites.
-                </p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 bg-white rounded-2xl border border-slate-100">
-                    <h5 className="text-xs font-bold text-slate-900 mb-1">Perceivable</h5>
-                    <p className="text-[11px] text-slate-400">Information and UI components must be presentable to users in ways they can perceive.</p>
-                  </div>
-                  <div className="p-4 bg-white rounded-2xl border border-slate-100">
-                    <h5 className="text-xs font-bold text-slate-900 mb-1">Operable</h5>
-                    <p className="text-[11px] text-slate-400">UI components and navigation must be operable by all users.</p>
-                  </div>
-                </div>
-              </section>
-            </div>
-
-            <div className="p-8 bg-slate-50 border-t border-slate-100 flex justify-end">
-              <button 
-                onClick={() => setShowAuditReport(false)}
-                className="px-8 py-3 bg-slate-900 text-white font-bold rounded-2xl hover:bg-slate-800 transition-colors"
-              >
-                Close Report
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AnimatePresence>
+        {showAuditReport && (
+          <AccessibilityReport 
+            result={state.results[activeTab]} 
+            onClose={() => setShowAuditReport(false)} 
+          />
+        )}
+      </AnimatePresence>
 
       {showHelp && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
@@ -1098,22 +850,22 @@ const App: React.FC = () => {
               <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-bold text-slate-900 text-[10px] uppercase tracking-widest">Accessibility</h3>
-                  <div className={`px-2 py-0.5 rounded-full text-[9px] font-black ${activeAudit?.score === 100 ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                    {activeAudit?.score}% AA
+                  <div className={`px-2 py-0.5 rounded-full text-[9px] font-black ${state.results[activeTab]?.audit.score === 100 ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                    {state.results[activeTab]?.audit.score}% AA
                   </div>
                 </div>
                 
                 <div className="mb-4">
                   <div className="w-full bg-slate-200 rounded-full h-1 overflow-hidden">
                     <div 
-                      className={`h-full transition-all duration-1000 ${activeAudit?.score === 100 ? 'bg-green-500' : 'bg-amber-500'}`}
-                      style={{ width: `${activeAudit?.score || 0}%` }}
+                      className={`h-full transition-all duration-1000 ${state.results[activeTab]?.audit.score === 100 ? 'bg-green-500' : 'bg-amber-500'}`}
+                      style={{ width: `${state.results[activeTab]?.audit.score || 0}%` }}
                     ></div>
                   </div>
                 </div>
                 
                 <div className="space-y-2 mb-6">
-                  {activeAudit?.checks.map((check, idx) => (
+                  {state.results[activeTab]?.audit.checks.map((check, idx) => (
                     <div key={idx} className="group relative">
                       <div className="flex items-center gap-2">
                         <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 flex items-center justify-center ${check.passed ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'}`}>
@@ -1144,54 +896,30 @@ const App: React.FC = () => {
                   View Full Report
                 </button>
 
-                <h3 className="font-bold text-slate-900 mb-4 text-[10px] uppercase tracking-widest border-t border-slate-100 pt-4">Controls</h3>
-                <div className="space-y-4">
-                   <div className="space-y-2">
-                     <div className="flex justify-between items-center">
-                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Font Size</label>
-                       <span className="text-[10px] font-black text-indigo-600">{state.results[activeTab]?.fontSize || 18}px</span>
-                     </div>
-                     <input 
-                       type="range" 
-                       min="12" 
-                       max="32" 
-                       value={state.results[activeTab]?.fontSize || 18} 
-                       onChange={(e) => {
-                         const newSize = parseInt(e.target.value);
-                         setState(prev => {
-                           const newResults = [...prev.results];
-                           newResults[activeTab] = { ...newResults[activeTab], fontSize: newSize };
-                           return { ...prev, results: newResults };
-                         });
-                       }}
-                       className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                     />
-                   </div>
-                   <button 
-                     onClick={handleRefineMath} 
-                     disabled={isRefining}
-                     className="w-full py-2.5 bg-white border border-slate-200 text-slate-900 rounded-xl text-[10px] font-bold hover:bg-slate-50 disabled:opacity-50 flex items-center justify-center gap-2"
-                   >
-                     {isRefining ? 'REFINING...' : 'REFINE MATH (AI)'}
-                   </button>
-                   <button onClick={handleBatchEdit} className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-bold hover:bg-slate-800">BATCH EDIT FIGURES</button>
-                   <button onClick={handleDownloadHtml} className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-bold hover:bg-indigo-700">DOWNLOAD HTML</button>
-                </div>
+                <Sidebar 
+                  activeTab={activeTab}
+                  results={state.results}
+                  isRefining={isRefining}
+                  onFontSizeChange={(newSize) => {
+                    setState(prev => {
+                      const newResults = [...prev.results];
+                      newResults[activeTab] = { ...newResults[activeTab], fontSize: newSize };
+                      return { ...prev, results: newResults };
+                    });
+                  }}
+                  onRefineMath={handleRefineMath}
+                  onBatchEdit={handleBatchEdit}
+                  onDownloadHtml={handleDownloadHtml}
+                />
               </div>
 
               <nav className="bg-slate-50 p-6 rounded-3xl border border-slate-100 max-h-[400px] overflow-y-auto">
                 <h3 className="font-bold text-slate-900 mb-4 text-[10px] uppercase tracking-widest">Pages</h3>
-                <div className="grid grid-cols-2 gap-2">
-                  {state.results.map((r, i) => (
-                    <button 
-                      key={i}
-                      onClick={() => setActiveTab(i)}
-                      className={`px-3 py-2 rounded-lg text-[10px] font-black border transition-all ${activeTab === i ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-slate-400 border-slate-100 hover:border-slate-300'}`}
-                    >
-                      P.{r.pageNumber}
-                    </button>
-                  ))}
-                </div>
+                <PageNavigation 
+                  results={state.results}
+                  activeTab={activeTab}
+                  onTabChange={setActiveTab}
+                />
               </nav>
             </aside>
 
@@ -1207,35 +935,12 @@ const App: React.FC = () => {
                 </div>
 
                 <div className="min-h-[800px] pb-32">
-                  {viewMode === 'preview' ? (
-                    <article 
-                      ref={contentRef} 
-                      className={`math-content prose prose-slate prose-indigo transition-all duration-500 ${state.results[activeTab]?.orientation === 'landscape' ? 'max-w-6xl' : 'max-w-4xl'}`}
-                      style={{ fontSize: `${state.results[activeTab]?.fontSize || 18}px` }}
-                    >
-                       <div dangerouslySetInnerHTML={{ __html: state.results[activeTab]?.html || '' }} />
-                    </article>
-                  ) : viewMode === 'source' ? (
-                    <div className="font-mono text-[11px] text-slate-500 bg-slate-50 p-8 rounded-3xl whitespace-pre-wrap leading-loose">
-                      {state.results[activeTab]?.html}
-                    </div>
-                  ) : (
-                    <div className="relative">
-                      <button 
-                        onClick={() => {
-                          const latex = state.results[activeTab]?.latex || '';
-                          navigator.clipboard.writeText(latex);
-                          alert('LaTeX copied to clipboard!');
-                        }}
-                        className="absolute top-4 right-4 px-4 py-2 bg-indigo-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-indigo-700 transition-all shadow-lg"
-                      >
-                        Copy LaTeX
-                      </button>
-                      <div className="font-mono text-[11px] text-slate-500 bg-slate-50 p-8 rounded-3xl whitespace-pre-wrap leading-loose">
-                        {state.results[activeTab]?.latex || 'No LaTeX source available for this page.'}
-                      </div>
-                    </div>
-                  )}
+                  <DocumentViewer 
+                    viewMode={viewMode}
+                    activeTab={activeTab}
+                    results={state.results}
+                    contentRef={contentRef}
+                  />
                 </div>
               </div>
             </div>
