@@ -29,11 +29,13 @@ interface FigureToEdit {
   originalSrc: string;
   alt: string;
   pageIndex: number;
+  width?: string;
+  alignment?: 'left' | 'center' | 'right';
 }
 
 interface ImageEditorProps {
   figures: FigureToEdit[];
-  onSave: (updates: { figureId: string, pageIndex: number, newSrc: string }[]) => void;
+  onSave: (updates: { figureId: string, pageIndex: number, newSrc: string, newAlt?: string, newWidth?: string, newAlignment?: 'left' | 'center' | 'right' }[]) => void;
   onClose: () => void;
   onApiCall?: () => void;
 }
@@ -44,7 +46,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose, onA
   
   const [adjustments, setAdjustments] = useState<Record<string, FigureAdjustments>>({});
   const [color, setColor] = useState('#4f46e5');
-  const [mode, setMode] = useState<'view' | 'crop' | 'draw' | 'graph' | 'text' | 'adjust' | 'accessibility' | 'ai-prompt'>('view');
+  const [mode, setMode] = useState<'view' | 'crop' | 'draw' | 'graph' | 'text' | 'adjust' | 'accessibility' | 'ai-prompt' | 'layout'>('view');
   const [isDrawing, setIsDrawing] = useState(false);
   const [isRecreating, setIsRecreating] = useState(false);
   const [isDescribing, setIsDescribing] = useState(false);
@@ -61,6 +63,24 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose, onA
   const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState<string>('');
   const [altTexts, setAltTexts] = useState<Record<string, string>>({});
+  const [widths, setWidths] = useState<Record<string, string>>({});
+  const [alignments, setAlignments] = useState<Record<string, 'left' | 'center' | 'right'>>({});
+
+  useEffect(() => {
+    const initialWidths: Record<string, string> = {};
+    const initialAlignments: Record<string, 'left' | 'center' | 'right'> = {};
+    const initialAltTexts: Record<string, string> = {};
+    
+    figures.forEach(fig => {
+      initialWidths[fig.id] = fig.width || '100%';
+      initialAlignments[fig.id] = fig.alignment || 'center';
+      initialAltTexts[fig.id] = fig.alt;
+    });
+    
+    setWidths(initialWidths);
+    setAlignments(initialAlignments);
+    setAltTexts(initialAltTexts);
+  }, [figures]);
 
   // Store edited versions of each figure
   const [editedSrcs, setEditedSrcs] = useState<Record<string, string>>({});
@@ -465,6 +485,8 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose, onA
       const adj = adjustments[fig.id] || { brightness: 100, contrast: 100, saturate: 100, red: 100, green: 100, blue: 100, gamma: 1 };
       const anns = annotations[fig.id] || [];
       const newAlt = altTexts[fig.id];
+      const newWidth = widths[fig.id];
+      const newAlignment = alignments[fig.id];
 
       const bakedSrc = await new Promise<string>((resolve) => {
         img.onload = () => {
@@ -507,7 +529,9 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose, onA
         figureId: fig.id,
         pageIndex: fig.pageIndex,
         newSrc: bakedSrc,
-        newAlt: newAlt
+        newAlt: newAlt,
+        newWidth: newWidth,
+        newAlignment: newAlignment
       });
     }
 
@@ -696,6 +720,13 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose, onA
                   <span className="text-[9px] font-bold">AI Prompt</span>
                 </button>
                 <button 
+                  onClick={() => setMode('layout')}
+                  className={`p-3 rounded-xl flex flex-col items-center gap-2 transition-all ${mode === 'layout' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-100 hover:border-slate-300'}`}
+                >
+                  <Plus className="w-5 h-5" />
+                  <span className="text-[9px] font-bold">Layout</span>
+                </button>
+                <button 
                   onClick={() => setMode('accessibility')}
                   className={`p-3 rounded-xl flex flex-col items-center gap-2 transition-all ${mode === 'accessibility' ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-100 hover:border-slate-300'}`}
                 >
@@ -754,6 +785,51 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose, onA
                     Tip: Describe exactly what you want to see. The AI will use your current figure as a reference to generate a new digital version.
                   </p>
                 </div>
+              </section>
+            )}
+
+            {mode === 'layout' && (
+              <section className="space-y-6">
+                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Layout & Placement</h3>
+                
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex justify-between mb-2">
+                      <label className="text-[10px] font-bold text-slate-600">Figure Width</label>
+                      <span className="text-[10px] font-black text-indigo-600">{widths[currentFigure.id] || '100%'}</span>
+                    </div>
+                    <input 
+                      type="range" min="10" max="100" step="5" 
+                      value={parseInt(widths[currentFigure.id] || '100')} 
+                      onChange={(e) => setWidths(prev => ({ ...prev, [currentFigure.id]: `${e.target.value}%` }))}
+                      className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                    />
+                    <div className="flex justify-between mt-1 text-[8px] text-slate-400 font-bold">
+                      <span>10%</span>
+                      <span>50%</span>
+                      <span>100%</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-600 block mb-3">Alignment</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(['left', 'center', 'right'] as const).map((align) => (
+                        <button
+                          key={align}
+                          onClick={() => setAlignments(prev => ({ ...prev, [currentFigure.id]: align }))}
+                          className={`py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${alignments[currentFigure.id] === align ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-slate-400 border-slate-100 hover:border-slate-300'}`}
+                        >
+                          {align}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                
+                <p className="text-[9px] text-slate-400 leading-relaxed italic">
+                  Tip: Use the width slider to shrink the figure box. Alignment controls its position relative to the page margins.
+                </p>
               </section>
             )}
 
@@ -1006,8 +1082,11 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose, onA
           </div>
 
           {/* Canvas Area */}
-          <div className="flex-1 bg-slate-200 p-12 flex items-center justify-center overflow-hidden relative" ref={containerRef}>
-            <div className="relative shadow-2xl rounded-lg overflow-hidden bg-white">
+          <div className="flex-1 bg-slate-200 p-12 overflow-y-auto relative" ref={containerRef}>
+            <div 
+              className={`relative shadow-2xl rounded-lg overflow-hidden bg-white transition-all duration-300 ${alignments[currentFigure.id] === 'left' ? 'mr-auto' : alignments[currentFigure.id] === 'right' ? 'ml-auto' : 'mx-auto'}`}
+              style={{ width: widths[currentFigure.id] || '100%' }}
+            >
               <canvas 
                 ref={canvasRef}
                 onMouseDown={(e) => {
@@ -1020,7 +1099,7 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose, onA
                 onTouchStart={startDrawing}
                 onTouchMove={draw}
                 onTouchEnd={stopDrawing}
-                className={`max-w-full max-h-full object-contain ${mode === 'draw' ? 'cursor-crosshair' : mode === 'crop' ? 'cursor-nwse-resize' : mode === 'text' ? 'cursor-text' : 'cursor-default'}`}
+                className={`w-full h-auto object-contain ${mode === 'draw' ? 'cursor-crosshair' : mode === 'crop' ? 'cursor-nwse-resize' : mode === 'text' ? 'cursor-text' : 'cursor-default'}`}
               />
               
               {mode === 'crop' && (

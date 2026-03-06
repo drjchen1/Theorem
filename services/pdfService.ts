@@ -9,11 +9,15 @@ export interface PdfImageData {
   canvas: HTMLCanvasElement;
   width: number;
   height: number;
+  orientation: 'portrait' | 'landscape';
 }
 
-export const pdfToImageData = async (file: File): Promise<PdfImageData[]> => {
+export const pdfToImageData = async (file: File, optimize: boolean = false): Promise<PdfImageData[]> => {
   const fileType = file.type;
   const fileName = file.name.toLowerCase();
+
+  const scale = optimize ? 1.6 : 2.5;
+  const quality = optimize ? 0.7 : 0.85;
 
   // Handle PDF
   if (fileType === 'application/pdf' || fileName.endsWith('.pdf')) {
@@ -24,7 +28,7 @@ export const pdfToImageData = async (file: File): Promise<PdfImageData[]> => {
     
     const data = await Promise.all(pageIndices.map(async (i) => {
       const page = await pdf.getPage(i);
-      const viewport = page.getViewport({ scale: 2.5 }); 
+      const viewport = page.getViewport({ scale }); 
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d');
       
@@ -35,12 +39,13 @@ export const pdfToImageData = async (file: File): Promise<PdfImageData[]> => {
 
       await page.render({ canvasContext: context, viewport }).promise;
       
-      const base64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+      const base64 = canvas.toDataURL('image/jpeg', quality).split(',')[1];
       return { 
         base64, 
         canvas, 
         width: viewport.width, 
-        height: viewport.height 
+        height: viewport.height,
+        orientation: (viewport.width > viewport.height ? 'landscape' : 'portrait') as 'landscape' | 'portrait'
       };
     }));
 
@@ -71,7 +76,7 @@ export const pdfToImageData = async (file: File): Promise<PdfImageData[]> => {
     if (!context) throw new Error('Could not create canvas context');
 
     // Scale image to a reasonable size if it's too large
-    const maxDim = 2000;
+    const maxDim = optimize ? 1600 : 2000;
     let width = img.width;
     let height = img.height;
     if (width > maxDim || height > maxDim) {
@@ -85,12 +90,13 @@ export const pdfToImageData = async (file: File): Promise<PdfImageData[]> => {
     context.drawImage(img, 0, 0, width, height);
     URL.revokeObjectURL(url);
 
-    const base64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+    const base64 = canvas.toDataURL('image/jpeg', quality).split(',')[1];
     return [{
       base64,
       canvas,
       width,
-      height
+      height,
+      orientation: (width > height ? 'landscape' : 'portrait') as 'landscape' | 'portrait'
     }];
   }
 
@@ -127,12 +133,13 @@ export const pdfToImageData = async (file: File): Promise<PdfImageData[]> => {
       context.fillText(line, padding, padding + i * lineHeight);
     });
 
-    const base64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+    const base64 = canvas.toDataURL('image/jpeg', quality).split(',')[1];
     return [{
       base64,
       canvas,
       width,
-      height
+      height,
+      orientation: (width > height ? 'landscape' : 'portrait') as 'landscape' | 'portrait'
     }];
   }
 

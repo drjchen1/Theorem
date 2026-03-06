@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
-import { GeminiPageResponse, LanguageLevel } from "../types";
+import { GeminiPageResponse, LanguageLevel, ModelStrategy } from "../types";
 
 const getSystemInstruction = (level: LanguageLevel) => {
   let adaptationInstruction = "";
@@ -25,7 +25,7 @@ Rules:
 3. UNIVERSAL DESIGN & AESTHETICS (BEAUTIFUL & ACCESSIBLE):
    - Use Tailwind CSS classes to create a visually pleasing, modern academic look.
    - TYPOGRAPHY: Use 'font-sans' for a clean, readable look. For headings, use 'font-black tracking-tight text-slate-900'.
-   - SPACING: Use 'mb-6' for paragraphs and 'mt-10 mb-4' for headings to create a clear visual rhythm.
+   - SPACING: Use 'mb-6' for paragraphs and 'mt-10 mb-4' for headings. Use 'mb-8' for <article> and <section> tags to maintain a tight 2rem vertical rhythm.
    - VISUAL HIERARCHY: Use 'border-l-4 border-indigo-500 pl-6 my-8 italic text-slate-700' for important theorems or definitions.
    - MATHEMATICS: Ensure block math '\\[ ... \\]' is wrapped in a '<div class="my-8 overflow-x-auto py-4 bg-slate-50 rounded-xl px-6 border border-slate-100 shadow-sm">' to make it stand out and be readable.
    - LISTS: Use 'list-disc list-inside space-y-2 ml-4 mb-6' for unordered lists.
@@ -57,9 +57,16 @@ Rules:
    - VISUAL STRUCTURE: Describe the overall layout (e.g., "A Cartesian coordinate system"), then specific components (axes, labels, curves), and finally the mathematical meaning.
    - In the HTML, place an <img> tag with a matching ID: <img id="fig_ID" alt="[COMPREHENSIVE DESCRIPTION]">.
 
-6. OUTPUT FORMAT: Return ONLY a JSON object:
+6. ACCESSIBLE LATEX (NEW): In the "latex" field, provide a complete, standalone LaTeX version of the page content. 
+   - Use structural commands (\section, \subsection, \itemize, \enumerate).
+   - Use proper mathematical environments ($...$ for inline, \[...\] for block).
+   - For figures, use the \begin{figure} environment and include the comprehensive alt text as a comment or within a \caption.
+   - Ensure the LaTeX is "tagged" conceptually by using clear structural markers that a screen reader or conversion tool could use.
+
+7. OUTPUT FORMAT: Return ONLY a JSON object:
    {
      "html": "The full semantic HTML string",
+     "latex": "The full accessible LaTeX string",
      "figures": [
        { "id": "fig_1", "box_2d": [ymin, xmin, ymax, xmax], "alt": "Detailed visual description" }
      ]
@@ -71,13 +78,15 @@ CRITICAL: Do not include any internal monologue, reasoning, or "thinking" proces
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-async function callGeminiWithRetry(base64Image: string, pageNumber: number, level: LanguageLevel = 'faithful', retries = 5): Promise<string> {
+async function callGeminiWithRetry(base64Image: string, pageNumber: number, level: LanguageLevel = 'faithful', strategy: ModelStrategy = 'flash', retries = 5): Promise<string> {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  
+  const modelName = strategy === 'hybrid' ? 'gemini-3.1-pro-preview' : 'gemini-3-flash-preview';
   
   for (let i = 0; i < retries; i++) {
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: modelName,
         contents: {
           parts: [
             { inlineData: { mimeType: 'image/jpeg', data: base64Image } },
@@ -94,6 +103,7 @@ async function callGeminiWithRetry(base64Image: string, pageNumber: number, leve
             type: Type.OBJECT,
             properties: {
               html: { type: Type.STRING },
+              latex: { type: Type.STRING },
               figures: {
                 type: Type.ARRAY,
                 items: {
@@ -112,7 +122,7 @@ async function callGeminiWithRetry(base64Image: string, pageNumber: number, leve
                 }
               }
             },
-            required: ["html", "figures"]
+            required: ["html", "latex", "figures"]
           },
           temperature: 0.1,
           maxOutputTokens: 65536,
@@ -144,10 +154,10 @@ async function callGeminiWithRetry(base64Image: string, pageNumber: number, leve
   throw new Error("Max retries exceeded");
 }
 
-export const convertPageToHtml = async (base64Image: string, pageNumber: number, level: LanguageLevel = 'faithful'): Promise<GeminiPageResponse> => {
+export const convertPageToHtml = async (base64Image: string, pageNumber: number, level: LanguageLevel = 'faithful', strategy: ModelStrategy = 'flash'): Promise<GeminiPageResponse> => {
   let jsonStr = "";
   try {
-    jsonStr = await callGeminiWithRetry(base64Image, pageNumber, level);
+    jsonStr = await callGeminiWithRetry(base64Image, pageNumber, level, strategy);
     return JSON.parse(jsonStr) as GeminiPageResponse;
   } catch (error: any) {
     console.error('Gemini API Error:', error);

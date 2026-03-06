@@ -1,15 +1,23 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import JSZip from 'jszip';
 import Header from './components/Header';
 import ProcessingOverlay from './components/ProcessingOverlay';
 import ImageEditor from './components/ImageEditor';
+import Sidebar from './components/Sidebar';
+import DocumentViewer from './components/DocumentViewer';
+import PageNavigation from './components/PageNavigation';
+import AccessibilityReport from './components/AccessibilityReport';
 import { pdfToImageData } from './services/pdfService';
 import { convertPageToHtml, recreateFigure, refineLatex } from './services/geminiService';
-import { FigureResult, ConversionResult, AppState, Figure, AccessibilityAudit, LanguageLevel } from './types';
+import { FigureResult, ConversionResult, AppState, LanguageLevel } from './types';
+import { useRequestStats } from './hooks/useRequestStats';
+import { useProcessingTimer } from './hooks/useProcessingTimer';
+import { runAccessibilityAudit } from './utils/accessibility';
+import { cropImage } from './utils/imageUtils';
 
 const App: React.FC = () => {
+  const { sessionCount, dailyCount, increment: incrementRequestCount } = useRequestStats();
   const [state, setState] = useState<AppState>({
     isProcessing: false,
     progress: 0,
@@ -17,60 +25,26 @@ const App: React.FC = () => {
     error: null,
     statusMessage: 'Waiting for upload...',
     sessionRequestCount: 0,
-    dailyRequestCount: 0
+    dailyRequestCount: 0,
+    modelStrategy: 'flash',
+    imageOptimization: true
   });
 
+  // Sync state with hook
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
-    const stored = localStorage.getItem('qed_daily_requests');
-    if (stored) {
-      const { date, count } = JSON.parse(stored);
-      if (date === today) {
-        setState(prev => ({ ...prev, dailyRequestCount: count }));
-      } else {
-        localStorage.setItem('qed_daily_requests', JSON.stringify({ date: today, count: 0 }));
-      }
-    } else {
-      localStorage.setItem('qed_daily_requests', JSON.stringify({ date: today, count: 0 }));
-    }
-  }, []);
-
-  const incrementRequestCount = () => {
-    setState(prev => {
-      const newDailyCount = prev.dailyRequestCount + 1;
-      const today = new Date().toISOString().split('T')[0];
-      localStorage.setItem('qed_daily_requests', JSON.stringify({ date: today, count: newDailyCount }));
-      return {
-        ...prev,
-        sessionRequestCount: prev.sessionRequestCount + 1,
-        dailyRequestCount: newDailyCount
-      };
-    });
-  };
+    setState(prev => ({ ...prev, sessionRequestCount: sessionCount, dailyRequestCount: dailyCount }));
+  }, [sessionCount, dailyCount]);
 
   const [originalFile, setOriginalFile] = useState<File | null>(null);
-  const [viewMode, setViewMode] = useState<'preview' | 'source'>('preview');
+  const [viewMode, setViewMode] = useState<'preview' | 'source' | 'latex'>('preview');
   const [activeTab, setActiveTab] = useState<number>(0);
   const [showHelp, setShowHelp] = useState(false);
   const [showAuditReport, setShowAuditReport] = useState(false);
   const [languageLevel, setLanguageLevel] = useState<LanguageLevel>('faithful');
   const [editingFigures, setEditingFigures] = useState<{ id: string, src: string, originalSrc: string, alt: string, pageIndex: number }[] | null>(null);
   const [isRefining, setIsRefining] = useState(false);
-  const [elapsedTime, setElapsedTime] = useState(0);
+  const elapsedTime = useProcessingTimer(state.isProcessing);
   const contentRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    let interval: any;
-    if (state.isProcessing) {
-      const startTime = Date.now();
-      interval = setInterval(() => {
-        setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
-      }, 1000);
-    } else {
-      setElapsedTime(0);
-    }
-    return () => clearInterval(interval);
-  }, [state.isProcessing]);
 
   useEffect(() => {
     if (window.MathJax && state.results.length > 0 && contentRef.current) {
@@ -100,7 +74,9 @@ const App: React.FC = () => {
         pageIndex, 
         src: figure.currentSrc,
         originalSrc: figure.originalSrc,
-        alt: figure.alt
+        alt: figure.alt,
+        width: figure.width,
+        alignment: figure.alignment
       }]);
     }
   };
@@ -132,18 +108,20 @@ const App: React.FC = () => {
         pageIndex: activeTab,
         src: f.currentSrc,
         originalSrc: f.originalSrc,
-        alt: f.alt
+        alt: f.alt,
+        width: f.width,
+        alignment: f.alignment
       })));
     } else {
       alert('No figures found on this page to batch edit.');
     }
   };
 
-  const saveEditedFigures = (updates: { figureId: string, pageIndex: number, newSrc: string, newAlt?: string }[]) => {
+  const saveEditedFigures = (updates: { figureId: string, pageIndex: number, newSrc: string, newAlt?: string, newWidth?: string, newAlignment?: 'left' | 'center' | 'right' }[]) => {
     setState(prev => {
       const newResults = [...prev.results];
       
-      updates.forEach(({ figureId, pageIndex, newSrc, newAlt }) => {
+      updates.forEach(({ figureId, pageIndex, newSrc, newAlt, newWidth, newAlignment }) => {
         const page = { ...newResults[pageIndex] };
         const figureIndex = page.figures.findIndex(f => f.id === figureId);
         
@@ -151,6 +129,8 @@ const App: React.FC = () => {
           const newFigures = [...page.figures];
           const updatedFig = { ...newFigures[figureIndex], currentSrc: newSrc };
           if (newAlt !== undefined) updatedFig.alt = newAlt;
+          if (newWidth !== undefined) updatedFig.width = newWidth;
+          if (newAlignment !== undefined) updatedFig.alignment = newAlignment;
           newFigures[figureIndex] = updatedFig;
           page.figures = newFigures;
           
@@ -164,7 +144,19 @@ const App: React.FC = () => {
             const cleanAlt = (newAlt || updatedFig.alt).replace(/\\\(|\\\)|\\\[|\\\]/g, '').replace(/"/g, '&quot;');
             img.setAttribute('src', newSrc);
             img.setAttribute('alt', cleanAlt);
+            
+            // Update figure style and alignment
+            const alignment = newAlignment || updatedFig.alignment || 'center';
+            const width = newWidth || updatedFig.width || '100%';
+            
             figure.setAttribute('aria-label', `Visual figure: ${cleanAlt}`);
+            figure.setAttribute('style', `width: ${width}`);
+            
+            // Update alignment classes
+            figure.classList.remove('mx-auto', 'mr-auto', 'ml-auto');
+            if (alignment === 'left') figure.classList.add('mr-auto');
+            else if (alignment === 'right') figure.classList.add('ml-auto');
+            else figure.classList.add('mx-auto');
             
             let figcaption = figure.querySelector('figcaption');
             if (!figcaption) {
@@ -186,122 +178,6 @@ const App: React.FC = () => {
     setEditingFigures(null);
   };
 
-  const runAccessibilityAudit = (html: string): AccessibilityAudit => {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    const checks = [];
-
-    // Check 1: Alt text for all images/figures (1.1.1)
-    const images = Array.from(doc.querySelectorAll('img'));
-    const allImagesHaveAlt = images.length === 0 || images.every(img => {
-      const alt = img.getAttribute('alt');
-      return alt && alt.trim().length > 0;
-    });
-    checks.push({
-      title: 'Alt Text (1.1.1)',
-      passed: allImagesHaveAlt,
-      description: 'All visual figures must have descriptive alternative text for screen readers.',
-      suggestion: allImagesHaveAlt ? undefined : 'Use the Figure Editor to add descriptive alt text to all images.'
-    });
-
-    // Check 2: Heading Structure (1.3.1) - Sequential Order
-    const headings = Array.from(doc.querySelectorAll('h1, h2, h3, h4, h5, h6'));
-    let headingOrderValid = true;
-    let lastLevel = 0;
-    for (const h of headings) {
-      const level = parseInt(h.tagName[1]);
-      if (level > lastLevel + 1 && lastLevel !== 0) {
-        headingOrderValid = false;
-        break;
-      }
-      lastLevel = level;
-    }
-    const hasH1 = headings.some(h => h.tagName === 'H1');
-    
-    checks.push({
-      title: 'Heading Order (1.3.1)',
-      passed: headingOrderValid && headings.length > 0 && hasH1,
-      description: 'Headings should follow a logical nested order (e.g., h1 followed by h2) without skipping levels.',
-      suggestion: !headings.length ? 'Add at least one <h1> heading.' : 
-                  !hasH1 ? 'Ensure the document starts with an <h1>.' :
-                  !headingOrderValid ? 'Fix skipped heading levels (e.g., don\'t jump from <h1> to <h3>).' : undefined
-    });
-
-    // Check 3: ARIA Landmarks (1.3.1)
-    const hasLandmarks = doc.querySelector('article, section, main, nav, header, footer') !== null;
-    checks.push({
-      title: 'Landmarks (1.3.1)',
-      passed: hasLandmarks,
-      description: 'Content is organized within semantic landmarks like <article> or <section> for easier navigation.',
-      suggestion: hasLandmarks ? undefined : 'Wrap main content in <article> or <section> tags.'
-    });
-
-    // Check 4: Color Contrast (1.4.3) - Simulation
-    const hasInlineColors = html.includes('style="color:') || html.includes('style="background:');
-    const hasLowContrastClasses = html.includes('text-slate-300') || html.includes('text-gray-300') || html.includes('text-zinc-300') || html.includes('text-slate-400');
-    const contrastPassed = !hasInlineColors && !hasLowContrastClasses;
-    
-    checks.push({
-      title: 'Contrast (1.4.3)',
-      passed: contrastPassed,
-      description: 'Text must have a contrast ratio of at least 4.5:1 against its background.',
-      suggestion: !contrastPassed ? 'Avoid light gray text or inline color styles that might be hard to read.' : undefined
-    });
-
-    // Check 5: Keyboard Navigation (2.1.1)
-    const interactive = Array.from(doc.querySelectorAll('a, button, details, [tabindex]'));
-    const noTabindexMinusOne = interactive.every(el => el.getAttribute('tabindex') !== '-1');
-    const allHaveLabels = interactive.every(el => {
-      const text = el.textContent?.trim();
-      const ariaLabel = el.getAttribute('aria-label');
-      const title = el.getAttribute('title');
-      return (text && text.length > 0) || (ariaLabel && ariaLabel.length > 0) || (title && title.length > 0);
-    });
-    
-    checks.push({
-      title: 'Keyboard (2.1.1)',
-      passed: noTabindexMinusOne && allHaveLabels,
-      description: 'All interactive elements must be reachable via keyboard and have descriptive labels.',
-      suggestion: !noTabindexMinusOne ? 'Remove tabindex="-1" from interactive elements.' :
-                  !allHaveLabels ? 'Add text or aria-labels to all buttons and links.' : undefined
-    });
-
-    // Check 6: Screen Reader (4.1.2)
-    const hasGroupRoles = doc.querySelectorAll('figure[role="group"]').length > 0;
-    checks.push({
-      title: 'Screen Reader (4.1.2)',
-      passed: images.length === 0 || hasGroupRoles,
-      description: 'Complex components like figures should use ARIA roles to describe their purpose.',
-      suggestion: (images.length > 0 && !hasGroupRoles) ? 'Ensure figures are wrapped in <figure role="group">.' : undefined
-    });
-
-    const passedCount = checks.filter(c => c.passed).length;
-    const score = Math.round((passedCount / checks.length) * 100);
-
-    return { score, checks };
-  };
-
-  const cropImage = (originalCanvas: HTMLCanvasElement, figure: Figure): string => {
-    const [ymin, xmin, ymax, xmax] = figure.box_2d;
-    const w = originalCanvas.width;
-    const h = originalCanvas.height;
-
-    const padding = 15;
-    const sx = Math.max(0, (xmin / 1000) * w - padding);
-    const sy = Math.max(0, (ymin / 1000) * h - padding);
-    const sWidth = Math.min(w - sx, ((xmax - xmin) / 1000) * w + padding * 2);
-    const sHeight = Math.min(h - sy, ((ymax - ymin) / 1000) * h + padding * 2);
-
-    const cropCanvas = document.createElement('canvas');
-    cropCanvas.width = sWidth;
-    cropCanvas.height = sHeight;
-    const ctx = cropCanvas.getContext('2d');
-    
-    if (!ctx) return '';
-    ctx.drawImage(originalCanvas, sx, sy, sWidth, sHeight, 0, 0, sWidth, sHeight);
-    return cropCanvas.toDataURL('image/png');
-  };
-
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -319,7 +195,7 @@ const App: React.FC = () => {
     }));
 
     try {
-      const pageData = await pdfToImageData(file);
+      const pageData = await pdfToImageData(file, state.imageOptimization);
       const totalPages = pageData.length;
       
       // Process pages in parallel with a concurrency limit
@@ -347,7 +223,7 @@ const App: React.FC = () => {
           }));
 
           incrementRequestCount();
-          const geminiResponse = await convertPageToHtml(pageData[i].base64, i + 1, languageLevel);
+          const geminiResponse = await convertPageToHtml(pageData[i].base64, i + 1, languageLevel, state.modelStrategy);
           updateProgress(80);
           
           let finalHtml = geminiResponse.html;
@@ -358,13 +234,17 @@ const App: React.FC = () => {
           }));
 
           // Process figures
-          const figureResults = geminiResponse.figures.map((fig) => {
+          const figureResults: FigureResult[] = geminiResponse.figures.map((fig) => {
             const screenshotBase64 = cropImage(pageData[i].canvas, fig);
+            // Calculate proportional width (normalized 0-1000 coordinates)
+            const proportionalWidth = Math.min(100, Math.max(25, Math.round((fig.box_2d[3] - fig.box_2d[1]) / 10)));
             return {
               id: fig.id,
               originalSrc: screenshotBase64,
               currentSrc: screenshotBase64,
-              alt: fig.alt
+              alt: fig.alt,
+              width: `${proportionalWidth}%`,
+              alignment: 'center'
             };
           });
           
@@ -374,10 +254,11 @@ const App: React.FC = () => {
             // unless the user specifically wants them. The user mentioned "inconsistent rendering", 
             // so we'll ensure the figcaption (which IS rendered) is robust.
             const cleanAlt = figResult.alt.replace(/\\\(|\\\)|\\\[|\\\]/g, '').replace(/"/g, '&quot;');
+            const alignmentClass = figResult.alignment === 'left' ? 'mr-auto' : figResult.alignment === 'right' ? 'ml-auto' : 'mx-auto';
             const figureHtml = `
-              <figure class="my-8 p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col items-center group/fig" role="group" aria-label="Visual figure: ${cleanAlt}">
-                <div class="relative overflow-hidden rounded-lg shadow-sm border border-slate-200 bg-white">
-                  <img src="${figResult.currentSrc}" alt="${cleanAlt}" class="max-w-full" data-figure-id="${figResult.id}">
+              <figure class="my-8 p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col items-center group/fig ${alignmentClass}" style="width: ${figResult.width || '100%'}" role="group" aria-label="Visual figure: ${cleanAlt}">
+                <div class="relative overflow-hidden rounded-lg shadow-sm border border-slate-200 bg-white w-full">
+                  <img src="${figResult.currentSrc}" alt="${cleanAlt}" class="w-full h-auto" data-figure-id="${figResult.id}">
                   <button class="edit-figure-btn absolute top-2 right-2 p-2 bg-white/90 backdrop-blur shadow-lg rounded-lg opacity-0 group-hover/fig:opacity-100 transition-all hover:bg-indigo-600 hover:text-white" data-figure-id="${figResult.id}" title="Edit Figure">
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
                   </button>
@@ -395,9 +276,12 @@ const App: React.FC = () => {
 
           results[i] = { 
             html: finalHtml, 
+            latex: geminiResponse.latex,
             pageNumber: i + 1,
             width: pageData[i].width,
             height: pageData[i].height,
+            orientation: pageData[i].orientation,
+            fontSize: 18,
             audit,
             figures: figureResults
           };
@@ -478,6 +362,8 @@ const App: React.FC = () => {
       return { ...r, html: doc.body.innerHTML };
     });
 
+    const docOrientation = state.results[0]?.orientation || 'portrait';
+
     const template = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -507,6 +393,10 @@ const App: React.FC = () => {
             --link-color: #4338ca;
         }
 
+        html {
+            scroll-behavior: smooth;
+        }
+
         body { 
             font-family: 'Inter', system-ui, sans-serif; 
             background-color: var(--bg); 
@@ -514,20 +404,29 @@ const App: React.FC = () => {
             margin: 0; 
             padding: 0; 
             line-height: 1.7;
-            font-size: 1.125rem;
         }
 
         .container {
             width: 100%;
             margin: 0 auto;
             padding: 2rem;
+            max-width: ${docOrientation === 'landscape' ? '1200px' : '900px'};
             transition: all 0.3s ease;
         }
+
+        .page-article {
+            font-size: 1.125rem; /* Default */
+            margin-bottom: 6rem;
+        }
+        
+        ${cleanResults.map(r => `
+        #page-${r.pageNumber} { font-size: ${r.fontSize}px; }
+        `).join('\n')}
 
         @media (min-width: 1024px) {
             .layout {
                 display: grid;
-                grid-template-columns: 200px 1fr;
+                grid-template-columns: ${docOrientation === 'landscape' ? '1fr' : '200px 1fr'};
                 gap: 6rem;
                 align-items: start;
                 padding-top: 4rem;
@@ -543,7 +442,7 @@ const App: React.FC = () => {
             .sidebar {
                 position: sticky;
                 top: 4rem;
-                display: block !important;
+                display: ${docOrientation === 'landscape' ? 'none' : 'block'};
             }
             .sidebar.hidden {
                 display: none !important;
@@ -555,7 +454,7 @@ const App: React.FC = () => {
         }
 
         @page {
-            size: A4 portrait;
+            size: A4 ${docOrientation};
             margin: 1cm;
         }
 
@@ -630,8 +529,8 @@ const App: React.FC = () => {
             color: var(--accent);
         }
 
-        article { 
-            margin-bottom: 8rem; 
+        article, section { 
+            margin-bottom: 2rem; 
             position: relative; 
             width: 100%; 
             background: white;
@@ -734,10 +633,10 @@ const App: React.FC = () => {
         @media print {
             body { font-size: 12pt; }
             .container { max-width: none; padding: 0; }
-            article { 
+            article, section { 
                 padding: 0; 
                 margin-bottom: 0; 
-                page-break-after: always; 
+                page-break-inside: avoid; 
             }
             .page-badge { display: none; }
             .no-print { display: none !important; }
@@ -800,10 +699,14 @@ const App: React.FC = () => {
             });
         });
 
-        // Hide toggle on mobile as sidebar is already hidden
+        // Hide toggle on mobile or if document is landscape
         function checkMobile() {
-            if (window.innerWidth < 1024) {
+            const isLandscape = ${docOrientation === 'landscape'};
+            if (window.innerWidth < 1024 || isLandscape) {
                 toggleBtn.style.display = 'none';
+                if (isLandscape) {
+                    layout.classList.add('sidebar-hidden');
+                }
             } else {
                 toggleBtn.style.display = 'flex';
             }
@@ -824,7 +727,6 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const activeAudit = state.results[activeTab]?.audit;
 
   return (
     <div className="min-h-screen flex flex-col bg-white">
@@ -840,127 +742,14 @@ const App: React.FC = () => {
         />
       )}
 
-      {showAuditReport && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-[2.5rem] shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col relative overflow-hidden">
-            <button 
-              onClick={() => setShowAuditReport(false)}
-              className="absolute top-8 right-8 text-slate-400 hover:text-slate-600 transition-colors z-10"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-
-            <div className="p-10 border-b border-slate-100">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-12 h-12 bg-indigo-600 text-white rounded-2xl flex items-center justify-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div>
-                  <h2 className="text-3xl font-black text-slate-900 tracking-tight">Accessibility Audit</h2>
-                  <p className="text-slate-500 font-medium">WCAG 2.2 AA Compliance Report for Page {activeTab + 1}</p>
-                  {state.totalTime && (
-                    <div className="mt-2 space-y-1">
-                      <p className="text-indigo-600 font-bold text-xs uppercase tracking-widest">Total Processing Time: {state.totalTime}s</p>
-                      <div className="flex gap-4">
-                        <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">
-                          {state.sessionRequestCount} Requests ({Math.round((state.sessionRequestCount / (state.totalTime / 60)) * 10) / 10} RPM)
-                        </p>
-                        <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">
-                          {state.dailyRequestCount} Daily Requests
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-6 mt-8">
-                <div className="flex-1">
-                  <div className="flex justify-between mb-2">
-                    <span className="text-sm font-black text-slate-900 uppercase tracking-widest">Compliance Score</span>
-                    <span className={`text-sm font-black ${activeAudit?.score === 100 ? 'text-green-600' : 'text-amber-600'}`}>{activeAudit?.score}%</span>
-                  </div>
-                  <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
-                    <div 
-                      className={`h-full transition-all duration-1000 ${activeAudit?.score === 100 ? 'bg-green-500' : 'bg-amber-500'}`}
-                      style={{ width: `${activeAudit?.score || 0}%` }}
-                    ></div>
-                  </div>
-                </div>
-                <div className={`px-6 py-3 rounded-2xl font-black text-lg ${activeAudit?.score === 100 ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
-                  {activeAudit?.score === 100 ? 'EXCELLENT' : 'IMPROVEMENT NEEDED'}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-10 space-y-8">
-              <section>
-                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">Detailed Checks</h3>
-                <div className="grid gap-4">
-                  {activeAudit?.checks.map((check, idx) => (
-                    <div key={idx} className={`p-6 rounded-3xl border ${check.passed ? 'bg-green-50/30 border-green-100' : 'bg-amber-50/30 border-amber-100'}`}>
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex gap-4">
-                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${check.passed ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'}`}>
-                            {check.passed ? (
-                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
-                            ) : (
-                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                            )}
-                          </div>
-                          <div>
-                            <h4 className="font-black text-slate-900 mb-1">{check.title}</h4>
-                            <p className="text-sm text-slate-500 leading-relaxed">{check.description}</p>
-                            {!check.passed && check.suggestion && (
-                              <div className="mt-4 p-4 bg-white border border-amber-200 rounded-2xl">
-                                <p className="text-xs font-black text-amber-700 uppercase tracking-widest mb-1">How to fix</p>
-                                <p className="text-sm text-slate-700 font-medium">{check.suggestion}</p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${check.passed ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                          {check.passed ? 'Passed' : 'Failed'}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              <section className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100">
-                <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest mb-4">About WCAG 2.2 AA</h3>
-                <p className="text-sm text-slate-500 leading-relaxed mb-4">
-                  Web Content Accessibility Guidelines (WCAG) 2.2 defines how to make Web content more accessible to people with disabilities. AA compliance is the standard level of accessibility for most commercial and government websites.
-                </p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 bg-white rounded-2xl border border-slate-100">
-                    <h5 className="text-xs font-bold text-slate-900 mb-1">Perceivable</h5>
-                    <p className="text-[11px] text-slate-400">Information and UI components must be presentable to users in ways they can perceive.</p>
-                  </div>
-                  <div className="p-4 bg-white rounded-2xl border border-slate-100">
-                    <h5 className="text-xs font-bold text-slate-900 mb-1">Operable</h5>
-                    <p className="text-[11px] text-slate-400">UI components and navigation must be operable by all users.</p>
-                  </div>
-                </div>
-              </section>
-            </div>
-
-            <div className="p-8 bg-slate-50 border-t border-slate-100 flex justify-end">
-              <button 
-                onClick={() => setShowAuditReport(false)}
-                className="px-8 py-3 bg-slate-900 text-white font-bold rounded-2xl hover:bg-slate-800 transition-colors"
-              >
-                Close Report
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AnimatePresence>
+        {showAuditReport && (
+          <AccessibilityReport 
+            result={state.results[activeTab]} 
+            onClose={() => setShowAuditReport(false)} 
+          />
+        )}
+      </AnimatePresence>
 
       {showHelp && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
@@ -1029,73 +818,144 @@ const App: React.FC = () => {
         )}
       </AnimatePresence>
 
-      <main className="flex-1 max-w-[1800px] mx-auto w-full px-4 sm:px-6 lg:px-12 py-8" role="main">
+      <main className="flex-1 max-w-[1600px] mx-auto w-full px-6 lg:px-12 py-12" role="main">
         {!state.results.length && !state.isProcessing ? (
-          <div className="max-w-6xl mx-auto mt-12 text-center p-16 border-2 border-dashed border-slate-200 rounded-[3rem]">
-            <h2 className="text-5xl font-black text-slate-900 tracking-tight mb-8">Ready to <span className="text-indigo-600">Digitize.</span></h2>
+          <div className="max-w-4xl mx-auto mt-8">
+            <div className="text-center mb-16">
+              <h2 className="text-6xl font-black text-slate-900 tracking-tighter mb-4">
+                Digitize <span className="text-indigo-600 italic serif">Mathematics.</span>
+              </h2>
+              <p className="text-slate-500 font-medium tracking-tight">Convert handwritten notes into accessible, high-fidelity documents.</p>
+            </div>
             
-            <div className="max-w-md mx-auto mb-12 bg-slate-50 p-6 rounded-3xl border border-slate-100">
-              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Adaptation Level</h3>
-              <div className="grid grid-cols-3 gap-2">
-                {(['faithful', 'natural', 'fleshed_out'] as const).map((level) => (
-                  <button
-                    key={level}
-                    onClick={() => setLanguageLevel(level)}
-                    className={`px-3 py-2 rounded-xl text-[10px] font-bold border transition-all ${languageLevel === level ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-slate-400 border-slate-100 hover:border-slate-300'}`}
-                  >
-                    {level === 'faithful' ? 'Faithful' : level === 'natural' ? 'Natural' : 'Fleshed Out'}
-                  </button>
-                ))}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+              {/* Adaptation Level */}
+              <div className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" /></svg>
+                  </div>
+                  <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Adaptation</h3>
+                </div>
+                <div className="space-y-2">
+                  {(['faithful', 'natural', 'fleshed_out'] as const).map((level) => (
+                    <button
+                      key={level}
+                      onClick={() => setLanguageLevel(level)}
+                      className={`w-full px-4 py-3 rounded-xl text-xs font-bold border transition-all text-left flex items-center justify-between ${languageLevel === level ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-200' : 'bg-white text-slate-500 border-slate-100 hover:border-slate-300'}`}
+                    >
+                      <span>{level === 'faithful' ? 'Faithful' : level === 'natural' ? 'Natural' : 'Fleshed Out'}</span>
+                      {languageLevel === level && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-6 text-[10px] text-slate-400 leading-relaxed font-medium">
+                  {languageLevel === 'faithful' ? 'Preserves original wording exactly.' : languageLevel === 'natural' ? 'Smooths flow into complete sentences.' : 'Expands notes with pedagogical context.'}
+                </p>
               </div>
-              <p className="mt-4 text-[10px] text-slate-400 leading-relaxed">
-                {languageLevel === 'faithful' ? 'Transcribes exactly as written.' : languageLevel === 'natural' ? 'Converts to natural, complete sentences.' : 'Expands notes with detailed explanations.'}
-              </p>
+
+              {/* Model Strategy */}
+              <div className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                  </div>
+                  <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Intelligence</h3>
+                </div>
+                <div className="space-y-2">
+                  <button
+                    onClick={() => setState(prev => ({ ...prev, modelStrategy: 'flash' }))}
+                    className={`w-full px-4 py-3 rounded-xl text-xs font-bold border transition-all text-left flex items-center justify-between ${state.modelStrategy === 'flash' ? 'bg-emerald-600 text-white border-emerald-600 shadow-lg shadow-emerald-200' : 'bg-white text-slate-500 border-slate-100 hover:border-slate-300'}`}
+                  >
+                    <span>Gemini Flash</span>
+                    {state.modelStrategy === 'flash' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                  </button>
+                  <button
+                    onClick={() => setState(prev => ({ ...prev, modelStrategy: 'hybrid' }))}
+                    className={`w-full px-4 py-3 rounded-xl text-xs font-bold border transition-all text-left flex items-center justify-between ${state.modelStrategy === 'hybrid' ? 'bg-slate-900 text-white border-slate-900 shadow-lg shadow-slate-200' : 'bg-white text-slate-500 border-slate-100 hover:border-slate-300'}`}
+                  >
+                    <span>Hybrid Pro</span>
+                    {state.modelStrategy === 'hybrid' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                  </button>
+                </div>
+                <p className="mt-6 text-[10px] text-slate-400 leading-relaxed font-medium">
+                  {state.modelStrategy === 'flash' ? 'Maximum speed for simple notes.' : 'Maximum precision for complex equations.'}
+                </p>
+              </div>
+
+              {/* Image Optimization */}
+              <div className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-8 h-8 rounded-full bg-amber-50 flex items-center justify-center text-amber-600">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h14a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                  </div>
+                  <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Optimization</h3>
+                </div>
+                <div className="space-y-2">
+                  <button
+                    onClick={() => setState(prev => ({ ...prev, imageOptimization: true }))}
+                    className={`w-full px-4 py-3 rounded-xl text-xs font-bold border transition-all text-left flex items-center justify-between ${state.imageOptimization ? 'bg-amber-600 text-white border-amber-600 shadow-lg shadow-amber-200' : 'bg-white text-slate-500 border-slate-100 hover:border-slate-300'}`}
+                  >
+                    <span>Performance</span>
+                    {state.imageOptimization && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                  </button>
+                  <button
+                    onClick={() => setState(prev => ({ ...prev, imageOptimization: false }))}
+                    className={`w-full px-4 py-3 rounded-xl text-xs font-bold border transition-all text-left flex items-center justify-between ${!state.imageOptimization ? 'bg-slate-900 text-white border-slate-900 shadow-lg shadow-slate-200' : 'bg-white text-slate-500 border-slate-100 hover:border-slate-300'}`}
+                  >
+                    <span>High Fidelity</span>
+                    {!state.imageOptimization && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                  </button>
+                </div>
+                <p className="mt-6 text-[10px] text-slate-400 leading-relaxed font-medium">
+                  {state.imageOptimization ? '30-50% faster processing time.' : 'Best for small or faint handwriting.'}
+                </p>
+              </div>
             </div>
 
-            <label className="inline-flex items-center gap-4 px-12 py-6 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl shadow-xl transition-all cursor-pointer">
-              <span>Upload File</span>
-              <input type="file" className="sr-only" accept="application/pdf,image/*,.heic,.heif,.txt" onChange={handleFileUpload} />
-            </label>
+            <div className="flex justify-center">
+              <label className="group relative inline-flex items-center gap-6 px-16 py-8 bg-slate-900 hover:bg-black text-white font-black text-lg rounded-[2.5rem] shadow-2xl transition-all cursor-pointer overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-violet-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <span className="relative z-10 uppercase tracking-widest">Upload & Digitize</span>
+                <svg className="relative z-10 w-6 h-6 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
+                <input type="file" className="sr-only" accept="application/pdf,image/*,.heic,.heif,.txt" onChange={handleFileUpload} />
+              </label>
+            </div>
           </div>
         ) : (
-          <div className="flex flex-col lg:flex-row gap-8 items-start">
-            <aside className="w-full lg:w-64 flex-shrink-0 space-y-4 lg:sticky lg:top-24">
-              <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-bold text-slate-900 text-[10px] uppercase tracking-widest">Accessibility</h3>
-                  <div className={`px-2 py-0.5 rounded-full text-[9px] font-black ${activeAudit?.score === 100 ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                    {activeAudit?.score}% AA
+          <div className="flex flex-col lg:flex-row gap-12 items-start">
+            <aside className="w-full lg:w-72 flex-shrink-0 space-y-6 lg:sticky lg:top-24">
+              <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="font-black text-slate-900 text-[11px] uppercase tracking-widest">Accessibility</h3>
+                  <div className={`font-mono text-[11px] font-black ${state.results[activeTab]?.audit.score === 100 ? 'text-green-600' : 'text-amber-600'}`}>
+                    {state.results[activeTab]?.audit.score}%
                   </div>
                 </div>
                 
-                <div className="mb-4">
-                  <div className="w-full bg-slate-200 rounded-full h-1 overflow-hidden">
+                <div className="mb-8">
+                  <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
                     <div 
-                      className={`h-full transition-all duration-1000 ${activeAudit?.score === 100 ? 'bg-green-500' : 'bg-amber-500'}`}
-                      style={{ width: `${activeAudit?.score || 0}%` }}
+                      className={`h-full transition-all duration-1000 ${state.results[activeTab]?.audit.score === 100 ? 'bg-green-500' : 'bg-amber-500'}`}
+                      style={{ width: `${state.results[activeTab]?.audit.score || 0}%` }}
                     ></div>
                   </div>
                 </div>
                 
-                <div className="space-y-2 mb-6">
-                  {activeAudit?.checks.map((check, idx) => (
+                <div className="space-y-3 mb-8">
+                  {state.results[activeTab]?.audit.checks.map((check, idx) => (
                     <div key={idx} className="group relative">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 flex items-center justify-center ${check.passed ? 'bg-green-100 text-green-600' : 'bg-amber-100 text-amber-600'}`}>
-                          {check.passed ? (
-                            <svg className="w-1.5 h-1.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
-                          ) : (
-                            <span className="text-[8px] font-bold">!</span>
-                          )}
-                        </div>
-                        <span className={`text-[9px] font-bold leading-tight ${check.passed ? 'text-slate-500' : 'text-amber-600'}`}>{check.title}</span>
+                      <div className="flex items-center gap-3">
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${check.passed ? 'bg-green-500' : 'bg-amber-500 animate-pulse'}`} />
+                        <span className={`text-[10px] font-bold tracking-tight leading-tight ${check.passed ? 'text-slate-400' : 'text-slate-900'}`}>{check.title}</span>
                       </div>
-                      <div className="hidden group-hover:block absolute left-full ml-4 top-0 w-56 p-4 bg-slate-800 text-white text-[10px] rounded-xl shadow-2xl z-50">
-                        <p className="font-bold mb-1">{check.description}</p>
+                      <div className="hidden group-hover:block absolute left-full ml-4 top-0 w-64 p-5 bg-slate-900 text-white text-[11px] rounded-2xl shadow-2xl z-50 border border-white/10 backdrop-blur-xl">
+                        <p className="font-bold mb-2 text-slate-200">{check.description}</p>
                         {check.suggestion && (
-                          <p className="text-amber-300 mt-2 flex items-start gap-1">
-                            <span className="font-black">Fix:</span> {check.suggestion}
-                          </p>
+                          <div className="pt-3 border-t border-white/10">
+                            <p className="text-indigo-300 font-black uppercase text-[9px] tracking-widest mb-1">Recommendation</p>
+                            <p className="text-slate-300">{check.suggestion}</p>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -1104,61 +964,79 @@ const App: React.FC = () => {
 
                 <button 
                   onClick={() => setShowAuditReport(true)}
-                  className="w-full py-2 mb-6 bg-white border border-slate-200 text-slate-600 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-slate-50 transition-colors"
+                  className="w-full py-3 mb-8 bg-slate-50 border border-slate-200 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-100 transition-colors"
                 >
-                  View Full Report
+                  Audit Report
                 </button>
 
-                <h3 className="font-bold text-slate-900 mb-4 text-[10px] uppercase tracking-widest border-t border-slate-100 pt-4">Controls</h3>
-                <div className="space-y-2">
-                   <button 
-                     onClick={handleRefineMath} 
-                     disabled={isRefining}
-                     className="w-full py-2.5 bg-white border border-slate-200 text-slate-900 rounded-xl text-[10px] font-bold hover:bg-slate-50 disabled:opacity-50 flex items-center justify-center gap-2"
-                   >
-                     {isRefining ? 'REFINING...' : 'REFINE MATH (AI)'}
-                   </button>
-                   <button onClick={handleBatchEdit} className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-bold hover:bg-slate-800">BATCH EDIT FIGURES</button>
-                   <button onClick={handleDownloadHtml} className="w-full py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-bold hover:bg-indigo-700">DOWNLOAD HTML</button>
+                <div className="pt-8 border-t border-slate-100">
+                  <Sidebar 
+                    activeTab={activeTab}
+                    results={state.results}
+                    isRefining={isRefining}
+                    onFontSizeChange={(newSize) => {
+                      setState(prev => {
+                        const newResults = [...prev.results];
+                        newResults[activeTab] = { ...newResults[activeTab], fontSize: newSize };
+                        return { ...prev, results: newResults };
+                      });
+                    }}
+                    onRefineMath={handleRefineMath}
+                    onBatchEdit={handleBatchEdit}
+                    onDownloadHtml={handleDownloadHtml}
+                  />
                 </div>
               </div>
 
-              <nav className="bg-slate-50 p-6 rounded-3xl border border-slate-100 max-h-[400px] overflow-y-auto">
-                <h3 className="font-bold text-slate-900 mb-4 text-[10px] uppercase tracking-widest">Pages</h3>
-                <div className="grid grid-cols-2 gap-2">
-                  {state.results.map((r, i) => (
-                    <button 
-                      key={i}
-                      onClick={() => setActiveTab(i)}
-                      className={`px-3 py-2 rounded-lg text-[10px] font-black border transition-all ${activeTab === i ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-slate-400 border-slate-100 hover:border-slate-300'}`}
-                    >
-                      P.{r.pageNumber}
-                    </button>
-                  ))}
-                </div>
+              <nav className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm max-h-[400px] overflow-y-auto">
+                <h3 className="font-black text-slate-900 mb-6 text-[11px] uppercase tracking-widest">Document Pages</h3>
+                <PageNavigation 
+                  results={state.results}
+                  activeTab={activeTab}
+                  onTabChange={setActiveTab}
+                />
               </nav>
             </aside>
 
-            <div className="flex-1 w-full flex flex-col items-center">
-              <div className="w-full max-w-none">
-                <div className="flex items-center justify-between mb-8 border-b border-slate-100 pb-4">
-                   <div className="flex gap-4">
-                      <button onClick={() => setViewMode('preview')} className={`text-[11px] font-black tracking-widest ${viewMode === 'preview' ? 'text-indigo-600' : 'text-slate-300 hover:text-slate-500'}`}>PREVIEW</button>
-                      <button onClick={() => setViewMode('source')} className={`text-[11px] font-black tracking-widest ${viewMode === 'source' ? 'text-indigo-600' : 'text-slate-300 hover:text-slate-500'}`}>SOURCE</button>
+            <div className="flex-1 w-full flex flex-col">
+              <div className="w-full bg-white rounded-[3rem] border border-slate-200 shadow-sm overflow-hidden">
+                <div className="flex items-center justify-between px-10 py-6 border-b border-slate-100 bg-slate-50/50">
+                   <div className="flex gap-8">
+                      <button onClick={() => setViewMode('preview')} className={`text-[11px] font-black tracking-widest transition-colors ${viewMode === 'preview' ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}>PREVIEW</button>
+                      <button onClick={() => setViewMode('source')} className={`text-[11px] font-black tracking-widest transition-colors ${viewMode === 'source' ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}>HTML</button>
+                      <button onClick={() => setViewMode('latex')} className={`text-[11px] font-black tracking-widest transition-colors ${viewMode === 'latex' ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}>LATEX</button>
                    </div>
-                   <div className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Page {activeTab + 1} of {state.results.length}</div>
+                   <div className="font-mono text-[11px] font-black text-slate-400 uppercase tracking-widest">
+                     Page <span className="text-slate-900">{activeTab + 1}</span> / {state.results.length}
+                   </div>
                 </div>
 
-                <div className="min-h-[800px] pb-32">
-                  {viewMode === 'preview' ? (
-                    <article ref={contentRef} className="math-content prose prose-slate prose-indigo max-w-none">
-                       <div dangerouslySetInnerHTML={{ __html: state.results[activeTab]?.html || '' }} />
-                    </article>
-                  ) : (
-                    <div className="font-mono text-[11px] text-slate-500 bg-slate-50 p-8 rounded-3xl whitespace-pre-wrap leading-loose">
-                      {state.results[activeTab]?.html}
-                    </div>
-                  )}
+                <div className="p-10 min-h-[800px]">
+                  <DocumentViewer 
+                    viewMode={viewMode}
+                    activeTab={activeTab}
+                    results={state.results}
+                    contentRef={contentRef}
+                  />
+                </div>
+              </div>
+              
+              <div className="mt-12 flex justify-center pb-24">
+                <div className="flex items-center gap-8 px-8 py-4 bg-white rounded-full border border-slate-200 shadow-sm text-[11px] font-black uppercase tracking-widest text-slate-400">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                    <span>{state.modelStrategy === 'flash' ? 'Flash Engine' : 'Hybrid Pro'}</span>
+                  </div>
+                  <div className="w-px h-4 bg-slate-200" />
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${state.imageOptimization ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                    <span>{state.imageOptimization ? 'Optimized' : 'High Res'}</span>
+                  </div>
+                  <div className="w-px h-4 bg-slate-200" />
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-amber-500" />
+                    <span>{languageLevel.replace('_', ' ')}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1177,9 +1055,10 @@ const App: React.FC = () => {
           color: #475569;
         }
         @media print {
+          @page { size: A4 ${state.results[activeTab]?.orientation || 'portrait'}; margin: 1cm; }
           header, aside, button, label, .border-b { display: none !important; }
           main, .flex-1, .w-full { width: 100% !important; max-width: none !important; margin: 0 !important; padding: 0 !important; }
-          article { border: none !important; padding: 0 !important; margin: 0 !important; page-break-after: always; }
+          article, section { border: none !important; padding: 0 !important; margin: 0 !important; page-break-inside: avoid; }
         }
       `}</style>
     </div>
