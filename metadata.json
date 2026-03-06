@@ -1,5 +1,5 @@
 {
   "name": "Q.E.D (Quad Erat Digitandum)",
-  "description": "Core Features\n- Accessible Transcription: Converts handwritten or printed notes into WCAG 2.2 AA compliant HTML.\n- Smart Figure Handling: Automatically crops figures and generates AI-powered descriptions and Alt Text.\n- Precision Math Rendering: Transforms complex n-dimensional manifolds into flawless, screen-reader-friendly LaTeX.\n- Visual Refinement: Includes basic touch-up tools to ensure your sketches finally obey the laws of physics.\n- Ad digitandum paratus.",
+  "description": "Core Features\n- Accessible Transcription: Converts handwritten or printed notes into WCAG 2.2 AA compliant HTML.\n- Smart Figure Handling: Automatically crops figures and generates AI-powered descriptions and Alt Text. These can all be edited prior to downloading the HTML.\n- Precision Math Rendering: Transforms complex equations into screen-reader-friendly LaTeX.\n- Visual Refinement: Includes basic touch-up tools for figures and graphs.\n- Ad digitandum paratus!",
   "requestFramePermissions": []
 }
