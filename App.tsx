@@ -482,7 +482,7 @@ const App: React.FC = () => {
       </main>
 
       <div className="fixed bottom-4 right-4 text-[9px] font-black text-slate-300 uppercase tracking-widest pointer-events-none select-none z-0">
-        Build: {__BUILD_DATE__}
+        v0.99 | {__BUILD_DATE__}
       </div>
 
       <style>{`

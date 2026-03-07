@@ -553,9 +553,9 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose, onA
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950 p-0 lg:p-8"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-white/95 backdrop-blur-md p-0 lg:p-8"
     >
-      <div className="bg-white w-full max-w-7xl h-full lg:h-[95vh] lg:rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden">
+      <div className="bg-white w-full max-w-7xl h-full lg:h-[95vh] lg:rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden border border-slate-200">
         {/* Header */}
         <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
           <div className="flex items-center gap-4">

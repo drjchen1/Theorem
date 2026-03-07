@@ -47,17 +47,17 @@ const FloatingMath = () => {
 const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({ progress, status, elapsedTime, sessionRequestCount, dailyRequestCount }) => {
   const rpm = elapsedTime && sessionRequestCount ? Math.round((sessionRequestCount / (elapsedTime / 60)) * 10) / 10 : 0;
   return (
-    <div className="fixed inset-0 bg-slate-950 z-50 flex flex-col items-center justify-center p-6 text-center overflow-hidden">
+    <div className="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center p-6 text-center overflow-hidden">
       {/* Immersive background */}
       <div className="absolute inset-0 z-0">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-600/20 rounded-full blur-[120px] animate-pulse" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-violet-600/20 rounded-full blur-[120px] animate-pulse delay-1000" />
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-600/10 rounded-full blur-[120px] animate-pulse" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-violet-600/10 rounded-full blur-[120px] animate-pulse delay-1000" />
       </div>
 
       <motion.div 
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="relative z-10 bg-white/5 backdrop-blur-3xl rounded-[4rem] p-16 max-w-xl w-full border border-white/10 shadow-2xl"
+        className="relative z-10 bg-white/80 backdrop-blur-3xl rounded-[4rem] p-16 max-w-xl w-full border border-slate-200 shadow-2xl"
       >
         <FloatingMath />
         
@@ -67,9 +67,9 @@ const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({ progress, status,
               <motion.div 
                 animate={{ rotate: 360 }}
                 transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
-                className="w-48 h-48 border border-white/10 rounded-full flex items-center justify-center"
+                className="w-48 h-48 border border-slate-200 rounded-full flex items-center justify-center"
               >
-                <div className="w-40 h-40 border border-white/20 rounded-full border-dashed" />
+                <div className="w-40 h-40 border border-slate-200 rounded-full border-dashed" />
               </motion.div>
               
               <div className="absolute inset-0 flex flex-col items-center justify-center">
@@ -79,10 +79,10 @@ const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({ progress, status,
                   animate={{ scale: 1, opacity: 1 }}
                   className="flex items-baseline"
                 >
-                  <span className="text-6xl font-black text-white tracking-tighter">
+                  <span className="text-6xl font-black text-slate-900 tracking-tighter">
                     {Math.round(progress)}
                   </span>
-                  <span className="text-xl font-black text-indigo-400 ml-1">%</span>
+                  <span className="text-xl font-black text-indigo-600 ml-1">%</span>
                 </motion.div>
                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] mt-2">Processing</span>
               </div>
@@ -90,7 +90,7 @@ const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({ progress, status,
           </div>
           
           <div className="space-y-4 mb-12">
-            <h2 className="text-3xl font-black text-white tracking-tight">Q.E.D. Engine <span className="text-indigo-400 italic serif">Active</span></h2>
+            <h2 className="text-3xl font-black text-slate-900 tracking-tight">Q.E.D. Engine <span className="text-indigo-600 italic serif">Active</span></h2>
             <div className="h-6 overflow-hidden flex justify-center">
               <AnimatePresence mode="wait">
                 <motion.p 
@@ -98,7 +98,7 @@ const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({ progress, status,
                   initial={{ y: 10, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
                   exit={{ y: -10, opacity: 0 }}
-                  className="text-slate-400 font-bold text-[11px] uppercase tracking-widest"
+                  className="text-slate-500 font-bold text-[11px] uppercase tracking-widest"
                 >
                   {status}
                 </motion.p>
@@ -113,17 +113,17 @@ const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({ progress, status,
               { label: 'Refine', icon: Sparkles, threshold: 80 }
             ].map((step, i) => (
               <div key={i} className="flex flex-col items-center gap-4">
-                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-500 border ${progress >= step.threshold ? 'bg-indigo-600 border-indigo-500 text-white shadow-[0_0_30px_rgba(79,70,229,0.4)]' : 'bg-white/5 border-white/10 text-slate-500'}`}>
+                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-500 border ${progress >= step.threshold ? 'bg-indigo-600 border-indigo-500 text-white shadow-[0_0_30px_rgba(79,70,229,0.2)]' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
                   <step.icon size={24} strokeWidth={2.5} />
                 </div>
-                <span className={`text-[9px] font-black uppercase tracking-widest ${progress >= step.threshold ? 'text-white' : 'text-slate-600'}`}>
+                <span className={`text-[9px] font-black uppercase tracking-widest ${progress >= step.threshold ? 'text-slate-900' : 'text-slate-400'}`}>
                   {step.label}
                 </span>
               </div>
             ))}
           </div>
           
-          <div className="flex items-center justify-center gap-6 text-slate-500 font-mono text-[10px] font-bold">
+          <div className="flex items-center justify-center gap-6 text-slate-400 font-mono text-[10px] font-bold">
             {elapsedTime !== undefined && <span>{elapsedTime}s elapsed</span>}
             {rpm > 0 && <span>{rpm} RPM</span>}
           </div>
