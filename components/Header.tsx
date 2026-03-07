@@ -15,7 +15,20 @@ const Header: React.FC<HeaderProps> = ({ onShowDocs }) => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
           </div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tighter">Q.E.D. &nbsp; ( Quad Erat <span className="italic font-black text-[#CFB991]">Digitandum</span> )</h1>
+          <div className="flex flex-col">
+            <h1 className="text-2xl font-black text-slate-900 tracking-tighter">Q.E.D. &nbsp; ( Quad Erat <span className="italic font-black text-[#CFB991]">Digitandum</span> )</h1>
+            <div className="flex items-center gap-1.5 -mt-1">
+              <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest">As Seen on</span>
+              <a 
+                href="https://sites.google.com/view/chenflix/home" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-[10px] font-black text-[#E50914] tracking-tighter transform scale-y-110 inline-block drop-shadow-[0_1px_1px_rgba(0,0,0,0.1)] hover:opacity-80 transition-opacity"
+              >
+                CHENFLIX
+              </a>
+            </div>
+          </div>
         </div>
         
         <nav className="hidden sm:flex items-center gap-8 text-xs font-black text-slate-400 uppercase tracking-widest">
