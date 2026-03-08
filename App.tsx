@@ -301,7 +301,9 @@ const App: React.FC = () => {
             border-radius: 1rem;
             text-align: center;
             box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            width: 100%;
             max-width: 100%;
+            min-width: 0;
             box-sizing: border-box;
             overflow: hidden;
         }
@@ -313,8 +315,9 @@ const App: React.FC = () => {
             margin-top: 1.5rem;
             font-style: italic;
             font-weight: 500;
-            overflow-wrap: break-word;
+            overflow-wrap: anywhere;
             word-wrap: break-word;
+            word-break: break-word;
             hyphens: auto;
         }
 
