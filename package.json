@@ -1,7 +1,7 @@
 {
   "name": "mathnote-digitizer",
   "private": true,
-  "version": "0.99b",
+  "version": "0.99c",
   "type": "module",
   "scripts": {
     "dev": "vite",

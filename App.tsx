@@ -135,25 +135,86 @@ const App: React.FC = () => {
         .container {
             width: 100%;
             margin: 0 auto;
-            padding: 2rem;
+            padding: 1rem;
             transition: all 0.3s ease;
         }
 
         @media (min-width: 1024px) {
+            .container {
+                padding: 2rem;
+            }
             .layout {
                 display: grid;
                 grid-template-columns: 200px 1fr;
-                gap: 6rem;
+                gap: 2rem;
                 align-items: start;
                 padding-top: 4rem;
                 transition: all 0.3s ease;
-                max-width: 1400px;
+                max-width: 1600px;
                 margin: 0 auto;
             }
-            .layout.sidebar-hidden {
+            .sidebar-hidden.container {
+                padding: 0;
+                max-width: none;
+            }
+            .sidebar-hidden .layout.sidebar-hidden {
                 grid-template-columns: 1fr;
                 gap: 0;
                 max-width: none;
+                width: 100%;
+                margin: 0;
+            }
+            .sidebar-hidden article {
+                background: transparent !important;
+                box-shadow: none !important;
+                padding: 2rem 0 !important;
+                position: relative;
+                width: 100%;
+            }
+            .sidebar-hidden .math-content {
+                max-width: 1100px;
+                margin: 0 auto;
+                display: block;
+                padding: 5rem;
+                background: white;
+                box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+                border-radius: 1.5rem;
+            }
+            .sidebar-hidden .download-btn-wrapper {
+                position: fixed;
+                right: 3rem !important;
+                top: 2rem !important;
+                z-index: 50;
+            }
+            .sidebar-hidden .page-badge {
+                position: absolute;
+                left: 3rem;
+                top: 2rem;
+                margin: 0;
+                z-index: 10;
+            }
+            .sidebar-hidden .download-btn-wrapper a {
+                background: #CEB888;
+                color: #000;
+                border: 2px solid #000;
+                font-weight: 700;
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+                transition: transform 0.2s ease;
+            }
+            .sidebar-hidden .download-btn-wrapper a:hover {
+                transform: translateY(-2px);
+                background: #e2cf9f;
+            }
+            .sidebar-hidden .download-btn-wrapper span {
+                position: absolute;
+                width: 1px;
+                height: 1px;
+                padding: 0;
+                margin: -1px;
+                overflow: hidden;
+                clip: rect(0, 0, 0, 0);
+                white-space: nowrap;
+                border-width: 0;
             }
             .sidebar {
                 position: sticky;
@@ -162,10 +223,6 @@ const App: React.FC = () => {
             }
             .sidebar.hidden {
                 display: none !important;
-            }
-            .content-expanded {
-                max-width: none;
-                margin: 0;
             }
         }
 
@@ -176,6 +233,33 @@ const App: React.FC = () => {
 
         .sidebar {
             display: none;
+        }
+
+        .download-btn-wrapper a {
+            transition: all 0.3s ease;
+        }
+
+        @media (max-width: 1023px) {
+            .download-btn-wrapper a {
+                padding: 0.5rem 1rem;
+                font-size: 10px;
+            }
+            .sidebar-hidden .math-content {
+                padding: 1.5rem;
+                border-radius: 0;
+                grid-template-columns: 1fr;
+            }
+            .sidebar-hidden .download-btn-wrapper,
+            .sidebar-hidden .page-badge {
+                position: absolute;
+                top: 0.5rem !important;
+            }
+            .sidebar-hidden .download-btn-wrapper {
+                right: 0.5rem !important;
+            }
+            .sidebar-hidden .page-badge {
+                left: 0.5rem !important;
+            }
         }
 
         .toggle-sidebar-btn {
@@ -250,8 +334,20 @@ const App: React.FC = () => {
             position: relative; 
             width: 100%; 
             background: white;
-            padding: 0;
+            padding: 1.5rem;
             display: flow-root;
+            box-sizing: border-box;
+            transition: padding 0.3s ease;
+        }
+
+        @media (min-width: 1024px) {
+            article {
+                padding: 3rem;
+            }
+            .sidebar-hidden article {
+                padding: 2rem 0;
+                width: 100%;
+            }
         }
 
         .math-content { 
@@ -323,24 +419,31 @@ const App: React.FC = () => {
             text-align: center;
             box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);
             max-width: 100%;
-            min-width: 280px;
             box-sizing: border-box;
             display: block;
+            overflow: hidden;
         }
 
         @media (min-width: 1280px) {
-            figure {
-                float: right;
-                width: 40%;
-                min-width: 320px;
-                max-width: 500px;
-                margin: 0.5rem 0 2rem 3rem;
-                shape-outside: inset(0);
+            .math-content {
+                display: grid;
+                grid-template-columns: 1fr 25%;
+                gap: 0 2rem;
+                align-items: start;
             }
-            /* Clear floats for headings to maintain structure */
-            h1, h2, h3, h4, h5, h6 {
+            .math-content > * {
+                grid-column: 1;
+            }
+            .math-content > figure {
+                grid-column: 2;
+                grid-row: span 50;
+                margin: 0;
+                width: 100%;
+                max-width: none;
+            }
+            .math-content h1, .math-content h2, .math-content h3 {
+                grid-column: 1 / -1;
                 clear: both;
-                padding-top: 1rem;
             }
         }
 
@@ -361,6 +464,14 @@ const App: React.FC = () => {
             height: auto;
             display: block;
             margin: 0 auto;
+        }
+
+        /* Math overflow safety */
+        mjx-container {
+            max-width: 100% !important;
+            overflow-x: auto !important;
+            overflow-y: hidden !important;
+            padding: 0.5rem 0;
         }
 
         /* Accessibility: focus styles */
@@ -402,12 +513,14 @@ const App: React.FC = () => {
                 ${cleanResults.map((r, idx) => `
                 <article id="page-${r.pageNumber}" role="region" class="page-article">
                     ${idx === 0 && originalFileName ? `
-                    <div class="no-print" style="position: absolute; top: 0; right: 0;">
-                        <a href="${originalFileName}" class="inline-flex items-center gap-2 px-5 py-2.5 bg-[#CFB991] text-black rounded-xl font-black text-[11px] hover:bg-[#B19B69] transition-all border-2 border-black no-underline tracking-widest shadow-xl transform hover:-translate-y-0.5 active:translate-y-0">
+                    <div class="no-print download-btn-wrapper" style="position: absolute; top: 0; right: 1.5rem;">
+                        <a href="${originalFileName}" class="inline-flex items-center gap-2 px-5 py-2.5 bg-[#CFB991] text-black rounded-xl font-black text-[11px] hover:bg-[#B19B69] transition-all border-2 border-black no-underline tracking-widest shadow-xl transform hover:-translate-y-0.5 active:translate-y-0" title="Download original notes">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M17 21v-8H7v8" />
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M7 3v5h8" />
                             </svg>
-                            Download original notes
+                            <span>Download original notes</span>
                         </a>
                     </div>` : ''}
                     <span class="page-badge">PAGE ${r.pageNumber}</span>
@@ -420,6 +533,7 @@ const App: React.FC = () => {
     </div>
     <script>
         const toggleBtn = document.getElementById('sidebar-toggle');
+        const container = document.querySelector('.container');
         const layout = document.getElementById('main-layout');
         const sidebar = document.getElementById('sidebar-nav');
         const articles = document.querySelectorAll('.page-article');
@@ -427,6 +541,7 @@ const App: React.FC = () => {
         toggleBtn.addEventListener('click', () => {
             const isHidden = sidebar.classList.toggle('hidden');
             layout.classList.toggle('sidebar-hidden');
+            container.classList.toggle('sidebar-hidden');
             toggleBtn.setAttribute('aria-expanded', !isHidden);
             
             articles.forEach(article => {
@@ -532,6 +647,25 @@ const App: React.FC = () => {
       </AnimatePresence>
 
       <main className="flex-1 max-w-[1800px] mx-auto w-full px-4 sm:px-6 lg:px-12 py-8" role="main">
+        {state.error && (
+          <div className="mb-8 p-6 bg-red-50 border border-red-100 rounded-3xl flex items-start gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
+            <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center text-red-600 flex-shrink-0">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            </div>
+            <div>
+              <h3 className="font-black text-red-900 text-sm mb-1">{state.error.split('|')[0]}</h3>
+              <p className="text-red-700 text-xs leading-relaxed font-medium">{state.error.split('|')[1] || state.error}</p>
+            </div>
+            <button 
+              onClick={() => reset()} 
+              className="ml-auto p-2 text-red-400 hover:text-red-600 transition-colors"
+              title="Clear Error"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+        )}
+
         {!state.results.length && !state.isProcessing ? (
           <Dashboard 
             onFileUpload={handleFileUpload} 
@@ -555,8 +689,8 @@ const App: React.FC = () => {
         )}
       </main>
 
-      <div className="fixed bottom-4 right-4 text-[9px] font-black text-slate-300 uppercase tracking-widest pointer-events-none select-none z-0">
-        V0.99b | {__BUILD_DATE__}
+      <div className="fixed bottom-4 right-4 text-[7px] md:text-[9px] font-black text-slate-300 uppercase tracking-widest pointer-events-none select-none z-0">
+        V0.99E | {__BUILD_DATE__}
       </div>
 
       <style>{`
@@ -571,16 +705,40 @@ const App: React.FC = () => {
           box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
         }
         @media (min-width: 1280px) {
-          figure {
-            float: right;
-            width: 40%;
-            min-width: 320px;
-            max-width: 450px;
-            margin: 0 0 2rem 2.5rem;
-            shape-outside: inset(0);
+          .math-content {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 0 4rem;
+            align-items: start;
           }
-          h1, h2, h3, h4, h5, h6 {
+          .math-content > * {
+            grid-column: 1;
+          }
+          .math-content > figure {
+            grid-column: 2;
+            grid-row: span 20;
+            margin: 0;
+            width: 100%;
+            max-width: none;
+          }
+          .math-content h1, .math-content h2, .math-content h3 {
+            grid-column: 1 / -1;
             clear: both;
+          }
+          .grid-layout {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 0 4rem;
+            align-items: start;
+          }
+          .grid-layout > *:not(figure) {
+            grid-column: 1;
+          }
+          .grid-layout > figure {
+            grid-column: 2;
+            margin: 0;
+            width: 100%;
+            max-width: none;
           }
         }
         @media print {

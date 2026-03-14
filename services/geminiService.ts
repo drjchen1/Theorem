@@ -30,6 +30,7 @@ Rules:
    - MATHEMATICS: Ensure block math '\\[ ... \\]' is wrapped in a '<div class="my-8 overflow-x-auto py-4 bg-slate-50 rounded-xl px-6 border border-slate-100 shadow-sm">' to make it stand out and be readable.
    - LISTS: Use 'list-disc list-inside space-y-2 ml-4 mb-6' for unordered lists.
    - NOTEPADS/BOXES: For boxed annotations or important notes, use '<div class="notebox">'.
+   - LAYOUT (TWO-COLUMN GRID): Whenever you include a figure, wrap the figure and the 1-2 paragraphs or headings immediately preceding it that provide context for that figure inside a '<div class="grid-layout">'. This ensures the text and figure are displayed side-by-side without overlapping.
 4. MATHEMATICS (CRITICAL): Convert all mathematical expressions into LaTeX. 
    - Use \\( ... \\) for inline math.
    - Use \\[ ... \\] for block/display math.
@@ -144,6 +145,103 @@ async function callGeminiWithRetry(base64Image: string, pageNumber: number, leve
   }
   throw new Error("Max retries exceeded");
 }
+
+async function callBatchGeminiWithRetry(images: { base64: string, pageNumber: number }[], level: LanguageLevel = 'faithful', retries = 5): Promise<string> {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  
+  for (let i = 0; i < retries; i++) {
+    try {
+      const parts = images.flatMap(img => [
+        { inlineData: { mimeType: 'image/jpeg', data: img.base64 } },
+        { text: `This is page ${img.pageNumber}.` }
+      ]);
+
+      parts.push({ text: `Analyze these ${images.length} pages in order. 
+      CRITICAL: Hand-drawn circles, arrows, and grouping brackets are annotations, NOT figures. 
+      Labels like "Option 2" in boxes are text content and must be transcribed directly into HTML. 
+      Only extract coordinate graphs or scientific drawings as figures. 
+      Return a JSON object with a 'pages' property containing exactly ${images.length} page results in the same order as provided.
+      Ensure the output is complete and does not cut off.` });
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: { parts },
+        config: {
+          systemInstruction: getSystemInstruction(level) + "\nIMPORTANT: Return a JSON object with a 'pages' property containing an array of page results. Each page result must have 'html' and 'figures' properties.",
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              pages: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    html: { type: Type.STRING },
+                    figures: {
+                      type: Type.ARRAY,
+                      items: {
+                        type: Type.OBJECT,
+                        properties: {
+                          id: { type: Type.STRING },
+                          box_2d: { 
+                            type: Type.ARRAY, 
+                            items: { type: Type.NUMBER },
+                            minItems: 4,
+                            maxItems: 4
+                          },
+                          alt: { type: Type.STRING }
+                        },
+                        required: ["id", "box_2d", "alt"]
+                      }
+                    }
+                  },
+                  required: ["html", "figures"]
+                }
+              }
+            },
+            required: ["pages"]
+          },
+          temperature: 0.1,
+          maxOutputTokens: 65536,
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
+        }
+      });
+
+      if (!response.text) throw new Error("Empty response from Gemini");
+      
+      let cleanJson = response.text.trim();
+      if (cleanJson.startsWith('```')) {
+        cleanJson = cleanJson.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+      }
+      
+      return cleanJson;
+    } catch (error: any) {
+      const isRateLimit = error.message?.includes('429') || error.message?.toLowerCase().includes('rate limit');
+      
+      if (isRateLimit && i < retries - 1) {
+        const waitTime = Math.pow(2, i + 1) * 1000;
+        console.warn(`Rate limit hit on batch. Retrying in ${waitTime}ms...`);
+        await sleep(waitTime);
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error("Max retries exceeded");
+}
+
+export const convertBatchToHtml = async (images: { base64: string, pageNumber: number }[], level: LanguageLevel = 'faithful'): Promise<GeminiPageResponse[]> => {
+  let jsonStr = "";
+  try {
+    jsonStr = await callBatchGeminiWithRetry(images, level);
+    const parsed = JSON.parse(jsonStr);
+    return parsed.pages as GeminiPageResponse[];
+  } catch (error: any) {
+    console.error('Gemini Batch API Error:', error);
+    throw new Error(`Failed to process batch: ${error.message}`);
+  }
+};
 
 export const convertPageToHtml = async (base64Image: string, pageNumber: number, level: LanguageLevel = 'faithful'): Promise<GeminiPageResponse> => {
   let jsonStr = "";

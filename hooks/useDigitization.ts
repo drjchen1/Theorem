@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { AppState, ConversionResult, LanguageLevel } from '../types';
 import { pdfToImageData } from '../services/pdfService';
-import { convertPageToHtml, refineLatex } from '../services/geminiService';
+import { convertBatchToHtml, refineLatex } from '../services/geminiService';
 import { runAccessibilityAudit } from '../utils/accessibility';
 import { cropImage } from '../utils/image';
 import { cleanAltText } from '../utils/dom';
@@ -79,100 +79,106 @@ export const useDigitization = () => {
     }));
 
     try {
-      const pageData = await pdfToImageData(file);
+      // Use optimize: true for faster processing and lower quota hit
+      const pageData = await pdfToImageData(file, true);
       const totalPages = pageData.length;
       
-      const CONCURRENCY_LIMIT = 3;
+      const BATCH_SIZE = 2; // Micro-batching: 2 pages per request for maximum stability
+      const CONCURRENCY_LIMIT = 2; // Process 2 batches at once for speed
       const results: ConversionResult[] = new Array(totalPages);
       let completedPages = 0;
 
-      const processPage = async (i: number) => {
+      const processBatch = async (batchIndices: number[]) => {
         try {
-          const updateProgress = (stepWeight: number) => {
-            const currentProgress = (completedPages * 100 + stepWeight) / totalPages;
-            setState(prev => ({ 
-              ...prev, 
-              progress: Math.min(99, currentProgress) 
-            }));
-          };
+          const batchImages = batchIndices.map(idx => ({
+            base64: pageData[idx].base64,
+            pageNumber: idx + 1
+          }));
 
-          updateProgress(10);
           setState(prev => ({ 
             ...prev, 
-            statusMessage: `Digitizing Page ${i + 1} of ${totalPages}...`,
+            statusMessage: `Digitizing Pages ${batchIndices.map(i => i + 1).join(', ')} of ${totalPages}...`,
           }));
 
           incrementRequestCount();
-          const geminiResponse = await convertPageToHtml(pageData[i].base64, i + 1, languageLevel);
-          updateProgress(80);
-          
-          let finalHtml = geminiResponse.html;
-          
-          setState(prev => ({ 
-            ...prev, 
-            statusMessage: `Extracting visual figures from Page ${i + 1}...`,
-          }));
+          const batchResponses = await convertBatchToHtml(batchImages, languageLevel);
 
-          const figureResults = geminiResponse.figures.map((fig) => {
-            const screenshotBase64 = cropImage(pageData[i].canvas, fig);
-            return {
-              id: fig.id,
-              originalSrc: screenshotBase64,
-              currentSrc: screenshotBase64,
-              alt: fig.alt
-            };
-          });
-          
-          figureResults.forEach(figResult => {
-            const imgTagRegex = new RegExp(`<img[^>]*id=["']${figResult.id}["'][^>]*>`, 'g');
+          for (let k = 0; k < batchIndices.length; k++) {
+            const i = batchIndices[k];
+            const geminiResponse = batchResponses[k];
             
-            const cleanAlt = cleanAltText(figResult.alt);
-            const displayAlt = figResult.alt; // Keep LaTeX for caption
+            if (!geminiResponse) continue;
 
-            const figureHtml = `
-              <figure class="my-8 p-6 bg-slate-50 rounded-2xl border border-slate-100 group/fig" role="group" aria-label="Visual figure: ${cleanAlt}">
-                <div class="relative overflow-hidden rounded-lg shadow-sm border border-slate-200 bg-white flex justify-center">
-                  <img src="${figResult.currentSrc}" alt="${cleanAlt}" class="max-w-full h-auto" data-figure-id="${figResult.id}">
-                  <button class="edit-figure-btn absolute top-2 right-2 p-2 bg-white/90 backdrop-blur shadow-lg rounded-lg opacity-0 group-hover/fig:opacity-100 transition-all hover:bg-indigo-600 hover:text-white" data-figure-id="${figResult.id}" title="Edit Figure">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
-                  </button>
-                </div>
-                <figcaption class="mt-4 text-sm text-slate-700 font-sans text-center italic leading-relaxed" aria-hidden="true">
-                  Figure: ${displayAlt}
-                </figcaption>
-              </figure>
-            `;
-            finalHtml = finalHtml.replace(imgTagRegex, figureHtml);
-          });
-          updateProgress(100);
+            let finalHtml = geminiResponse.html;
+            
+            const figureResults = geminiResponse.figures.map((fig) => {
+              const screenshotBase64 = cropImage(pageData[i].canvas, fig);
+              return {
+                id: fig.id,
+                originalSrc: screenshotBase64,
+                currentSrc: screenshotBase64,
+                alt: fig.alt
+              };
+            });
+            
+            figureResults.forEach(figResult => {
+              const imgTagRegex = new RegExp(`<img[^>]*id=["']${figResult.id}["'][^>]*>`, 'g');
+              const cleanAlt = cleanAltText(figResult.alt);
+              const displayAlt = figResult.alt;
 
-          const audit = runAccessibilityAudit(finalHtml);
+              const figureHtml = `
+                <figure class="my-8 p-6 bg-slate-50 rounded-2xl border border-slate-100 group/fig" role="group" aria-label="Visual figure: ${cleanAlt}">
+                  <div class="relative overflow-hidden rounded-lg shadow-sm border border-slate-200 bg-white flex justify-center">
+                    <img src="${figResult.currentSrc}" alt="${cleanAlt}" class="max-w-full h-auto" data-figure-id="${figResult.id}">
+                    <button class="edit-figure-btn absolute top-2 right-2 p-2 bg-white/90 backdrop-blur shadow-lg rounded-lg opacity-0 group-hover/fig:opacity-100 transition-all hover:bg-indigo-600 hover:text-white" data-figure-id="${figResult.id}" title="Edit Figure">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                    </button>
+                  </div>
+                  <figcaption class="mt-4 text-sm text-slate-700 font-sans text-center italic leading-relaxed" aria-hidden="true">
+                    Figure: ${displayAlt}
+                  </figcaption>
+                </figure>
+              `;
+              finalHtml = finalHtml.replace(imgTagRegex, figureHtml);
+            });
 
-          results[i] = { 
-            html: finalHtml, 
-            pageNumber: i + 1,
-            width: pageData[i].width,
-            height: pageData[i].height,
-            audit,
-            figures: figureResults
-          };
+            const audit = runAccessibilityAudit(finalHtml);
 
-          completedPages++;
-          setState(prev => ({
-            ...prev,
-            progress: (completedPages / totalPages) * 100,
-            statusMessage: `Completed ${completedPages} of ${totalPages} pages...`,
-            results: results.filter(r => r !== undefined).sort((a, b) => a.pageNumber - b.pageNumber)
-          }));
+            results[i] = { 
+              html: finalHtml, 
+              pageNumber: i + 1,
+              width: pageData[i].width,
+              height: pageData[i].height,
+              audit,
+              figures: figureResults
+            };
+
+            completedPages++;
+            setState(prev => ({
+              ...prev,
+              progress: (completedPages / totalPages) * 100,
+              statusMessage: `Completed ${completedPages} of ${totalPages} pages...`,
+              results: results.filter(r => r !== undefined).sort((a, b) => a.pageNumber - b.pageNumber)
+            }));
+          }
         } catch (err: any) {
-          console.error(`Error processing page ${i + 1}:`, err);
+          console.error(`Error processing batch ${batchIndices}:`, err);
           throw err;
         }
       };
 
+      const batches = [];
+      for (let i = 0; i < totalPages; i += BATCH_SIZE) {
+        const batch = [];
+        for (let j = 0; j < BATCH_SIZE && i + j < totalPages; j++) {
+          batch.push(i + j);
+        }
+        batches.push(batch);
+      }
+
       const pool = [];
-      for (let i = 0; i < totalPages; i++) {
-        const p = processPage(i);
+      for (const batch of batches) {
+        const p = processBatch(batch);
         pool.push(p);
         if (pool.length >= CONCURRENCY_LIMIT) {
           await Promise.race(pool);
@@ -190,7 +196,31 @@ export const useDigitization = () => {
         totalTime
       }));
     } catch (err: any) {
-      setState(prev => ({ ...prev, isProcessing: false, error: err.message, statusMessage: 'Error' }));
+      let userMessage = "An unexpected error occurred during digitization.";
+      let workaround = "Please try refreshing the page or uploading a smaller file.";
+      
+      const errMsg = err.message?.toLowerCase() || "";
+      
+      if (errMsg.includes("quota") || errMsg.includes("rate limit") || errMsg.includes("429")) {
+        userMessage = "High Traffic Detected (Rate Limit).";
+        workaround = "We're processing many requests right now. Please wait 60 seconds and try again.";
+      } else if (errMsg.includes("safety") || errMsg.includes("blocked")) {
+        userMessage = "Content Restricted by Safety Filter.";
+        workaround = "The AI was unable to process this page due to safety guidelines. Please ensure the content is strictly educational and clear.";
+      } else if (errMsg.includes("output") || errMsg.includes("token") || errMsg.includes("cut off")) {
+        userMessage = "Page Too Complex to Process.";
+        workaround = "This page has a lot of content. Try splitting it into two separate images or scans for better results.";
+      } else if (errMsg.includes("network") || errMsg.includes("fetch")) {
+        userMessage = "Network Connection Issue.";
+        workaround = "Please check your internet connection and try again.";
+      }
+
+      setState(prev => ({ 
+        ...prev, 
+        isProcessing: false, 
+        error: `${userMessage}|${workaround}`, 
+        statusMessage: 'Error' 
+      }));
     }
   };
 
