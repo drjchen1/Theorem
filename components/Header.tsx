@@ -20,7 +20,7 @@ const Header: React.FC<HeaderProps> = ({ onShowDocs }) => {
             <div className="flex items-center gap-1.5 -mt-0.5 md:-mt-1">
               <span className="text-[6px] md:text-[7px] font-black text-slate-400 uppercase tracking-widest">As Seen on</span>
               <a 
-                href="https://sites.google.com/view/chenflix/home" 
+                href="https://drjchen1.github.io/chenflix/" 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="text-[8px] md:text-[10px] font-black text-[#E50914] tracking-tighter transform scale-y-110 inline-block drop-shadow-[0_1px_1px_rgba(0,0,0,0.1)] hover:opacity-80 transition-opacity"
