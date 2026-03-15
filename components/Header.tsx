@@ -32,7 +32,7 @@ const Header: React.FC<HeaderProps> = ({ onShowDocs }) => {
         </div>
         
         <nav className="hidden sm:flex items-center gap-4 md:gap-8 text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest flex-shrink-0">
-          <button onClick={onShowDocs} className="hover:text-purdue transition-colors">Documentation</button>
+          <button onClick={onShowDocs} className="hover:text-purdue transition-colors">How to Use</button>
           <a href="https://www.w3.org/WAI/standards-guidelines/wcag/" target="_blank" rel="noopener noreferrer" className="hover:text-purdue transition-colors">WCAG 2.2 AA</a>
         </nav>
       </div>

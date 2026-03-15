@@ -50,60 +50,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onFileUpload, isProcessing }) => 
             <input type="file" className="sr-only" accept="application/pdf,image/*,.heic,.heif,.txt" onChange={handleFileChange} disabled={isProcessing} />
           </label>
         </div>
-
-        <div className="text-left">
-          <button 
-            onClick={() => setShowTips(!showTips)}
-            className="w-full flex items-center justify-between p-1 bg-slate-100 rounded-full border border-slate-200 hover:bg-slate-200 transition-colors group"
-          >
-            <div className="flex items-center gap-2 py-1.5 px-3 md:px-4">
-              <Info strokeWidth={3} className="text-purdue w-3 h-3 md:w-3.5 md:h-3.5" />
-              <h3 className="text-[8px] md:text-[9px] font-black text-slate-400 uppercase tracking-widest group-hover:text-slate-600 transition-colors">
-                Tips for Success
-              </h3>
-            </div>
-            <motion.div
-              animate={{ rotate: showTips ? 180 : 0 }}
-              className="pr-3 md:pr-4 text-slate-300 group-hover:text-slate-500 transition-colors"
-            >
-              <ChevronDown strokeWidth={3} className="w-3 h-3 md:w-3.5 md:h-3.5" />
-            </motion.div>
-          </button>
-
-          <AnimatePresence>
-            {showTips && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                className="overflow-hidden"
-              >
-                <div className="p-6 pt-4 bg-slate-50/50 rounded-3xl mt-2 border border-slate-100">
-                  <ul className="space-y-3">
-                    <li className="flex gap-3 items-start">
-                      <div className="w-1 h-1 rounded-full bg-purdue mt-1.5 flex-shrink-0" />
-                      <p className="text-[10px] text-slate-600 leading-relaxed">
-                        <span className="font-bold text-slate-900">Large Files:</span> Documents over 20 pages work best when split into smaller parts.
-                      </p>
-                    </li>
-                    <li className="flex gap-3 items-start">
-                      <div className="w-1 h-1 rounded-full bg-purdue mt-1.5 flex-shrink-0" />
-                      <p className="text-[10px] text-slate-600 leading-relaxed">
-                        <span className="font-bold text-slate-900">Image Quality:</span> Clear, high-contrast photos ensure accurate math recognition.
-                      </p>
-                    </li>
-                    <li className="flex gap-3 items-start">
-                      <div className="w-1 h-1 rounded-full bg-purdue mt-1.5 flex-shrink-0" />
-                      <p className="text-[10px] text-slate-600 leading-relaxed">
-                        <span className="font-bold text-slate-900">Complex Layouts:</span> Use high-res images for pages with dense or overlapping notes.
-                      </p>
-                    </li>
-                  </ul>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
       </div>
     </div>
   );

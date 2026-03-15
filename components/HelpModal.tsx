@@ -24,13 +24,13 @@ const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
-          <h2 className="text-3xl font-black text-slate-900 tracking-tight mb-2">How to use this converter</h2>
-          <p className="text-slate-500 font-medium">Get the most out of Q.E.D.</p>
+          <h2 className="text-3xl font-black text-slate-900 tracking-tight mb-2">How to Use Q.E.D.</h2>
+          <p className="text-slate-500 font-medium">Instructions and tips for the best results.</p>
         </div>
 
         <div className="space-y-6 max-h-[50vh] overflow-y-auto pr-4 custom-scrollbar">
           <section>
-            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">How to use this converter</h3>
+            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Step-by-Step Guide</h3>
             <div className="space-y-4">
               <div className="flex gap-4">
                 <div className="flex-shrink-0 w-8 h-8 bg-purdue/10 rounded-full flex items-center justify-center text-xs font-black text-purdue">01</div>
@@ -64,19 +64,19 @@ const HelpModal: React.FC<HelpModalProps> = ({ onClose }) => {
           </section>
 
           <section className="pt-6 border-t border-slate-100">
-            <h3 className="text-xs font-black text-purdue uppercase tracking-widest mb-4">Tips for Best Results</h3>
+            <h3 className="text-xs font-black text-purdue uppercase tracking-widest mb-4">Tips for Success</h3>
             <div className="grid gap-4">
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
                 <h5 className="text-xs font-black text-slate-900 uppercase mb-1">Lighting & Quality</h5>
                 <p className="text-[11px] text-slate-500 leading-relaxed">Avoid shadows. Use dark ink on white paper. Ensure the page is as flat as possible for accurate symbol recognition.</p>
               </div>
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                <h5 className="text-xs font-black text-slate-900 uppercase mb-1">File Size</h5>
-                <p className="text-[11px] text-slate-500 leading-relaxed">For large PDFs, upload 5–10 pages at a time to ensure faster processing and better AI focus.</p>
+                <h5 className="text-xs font-black text-slate-900 uppercase mb-1">File Size & Length</h5>
+                <p className="text-[11px] text-slate-500 leading-relaxed">Documents over 20 pages work best when split. Upload 5–10 pages at a time for faster processing and better AI focus.</p>
               </div>
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                <h5 className="text-xs font-black text-slate-900 uppercase mb-1">Spacing</h5>
-                <p className="text-[11px] text-slate-500 leading-relaxed">Leave a little white space between text and diagrams. This helps the AI perfectly separate figures from paragraphs.</p>
+                <h5 className="text-xs font-black text-slate-900 uppercase mb-1">Complex Layouts</h5>
+                <p className="text-[11px] text-slate-500 leading-relaxed">Use high-res images for pages with dense notes. Leave white space between text and diagrams to help the AI separate them.</p>
               </div>
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
                 <h5 className="text-xs font-black text-slate-900 uppercase mb-1">Refine & Recreate</h5>
