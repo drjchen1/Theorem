@@ -41,7 +41,34 @@ const FloatingMath = () => {
   );
 };
 
+const DIVERSIONS = [
+  "An octopus has three hearts. Two stop beating when it swims. Inefficient.",
+  "Wombat feces are cube-shaped. This prevents them from rolling away. Structural integrity.",
+  "A shrimp's heart is located in its head. Logic follows.",
+  "Sloths can hold their breath for 40 minutes. Dolphins cannot. Competitive.",
+  "A snail can sleep for three years. Relatable.",
+  "Godzilla’s internal nuclear reactor is 98% efficient. A model of sustainability.",
+  "Unicorn horns are composed of high-density keratin and concentrated optimism.",
+  "The Loch Ness Monster is actually a very long, very shy sturgeon. Allegedly.",
+  "Dragons do not breathe fire; they exhale ignited methane. Chemistry matters.",
+  "Bigfoot is not blurry; he just vibrates at a frequency higher than most shutters.",
+  "The word 'hundred' comes from the Old Norse 'hundrath', which means 120. Inaccurate.",
+  "A 'jiffy' is an actual unit of time: 1/100th of a second. Be quick.",
+  "The number 40 is the only number that is spelled with letters in alphabetical order. Tidy.",
+  "Cicadas use prime numbers (13, 17) for their life cycles to avoid predators. Math as survival.",
+  "The number 7 was invented in 1924 by a man named Steve. He was tired of 6.",
+  "Parallel lines actually meet at infinity, but they are too shy to admit it in public.",
+  "Calculus was originally invented by Newton to avoid making eye contact with his neighbors.",
+  "The square root of negative one is actually a very small, very angry ghost.",
+  "Triangles have four sides in the fourth dimension. You just aren't looking hard enough."
+];
+
 const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({ progress, status }) => {
+  const [randomFact] = React.useState(() => DIVERSIONS[Math.floor(Math.random() * DIVERSIONS.length)]);
+  
+  // Show fact starting at 50% progress so they aren't missed
+  const displayStatus = (progress >= 50 && progress <= 75) ? randomFact : status;
+
   return (
     <div className="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center p-6 text-center overflow-hidden">
       {/* Immersive background */}
@@ -119,16 +146,16 @@ const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({ progress, status 
                 -ing
               </motion.span>
             </h2>
-            <div className="h-6 overflow-hidden flex justify-center">
+            <div className="h-12 overflow-hidden flex justify-center items-center">
               <AnimatePresence mode="wait">
                 <motion.p 
-                  key={status}
+                  key={displayStatus}
                   initial={{ y: 10, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
                   exit={{ y: -10, opacity: 0 }}
-                  className="text-slate-500 font-bold text-[11px] uppercase tracking-widest"
+                  className="text-slate-500 font-bold text-[10px] uppercase tracking-widest leading-relaxed max-w-[280px]"
                 >
-                  {status}
+                  {displayStatus}
                 </motion.p>
               </AnimatePresence>
             </div>
