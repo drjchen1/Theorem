@@ -110,7 +110,15 @@ const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({ progress, status 
           </div>
           
           <div className="space-y-4 mb-8">
-            <h2 className="text-3xl font-black text-slate-900 tracking-tight">Q.E.D. Engine <span className="text-purdue italic serif">Active</span></h2>
+            <h2 className="text-3xl font-black text-slate-900 tracking-tight">
+              Digitandum<motion.span 
+                animate={{ opacity: [1, 0.5, 1] }} 
+                transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                className="text-purdue italic serif"
+              >
+                -ing
+              </motion.span>
+            </h2>
             <div className="h-6 overflow-hidden flex justify-center">
               <AnimatePresence mode="wait">
                 <motion.p 
