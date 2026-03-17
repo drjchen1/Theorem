@@ -24,16 +24,16 @@ export const useDigitization = () => {
 
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
-    const stored = localStorage.getItem('qed_daily_requests');
+    const stored = localStorage.getItem('qed_daily_usage');
     if (stored) {
       const { date, count } = JSON.parse(stored);
       if (date === today) {
-        setState(prev => ({ ...prev, dailyRequestCount: count }));
+        setState(prev => ({ ...prev, dailyRequestCount: count || 0 }));
       } else {
-        localStorage.setItem('qed_daily_requests', JSON.stringify({ date: today, count: 0 }));
+        localStorage.setItem('qed_daily_usage', JSON.stringify({ date: today, count: 0 }));
       }
     } else {
-      localStorage.setItem('qed_daily_requests', JSON.stringify({ date: today, count: 0 }));
+      localStorage.setItem('qed_daily_usage', JSON.stringify({ date: today, count: 0 }));
     }
   }, []);
 
@@ -50,11 +50,11 @@ export const useDigitization = () => {
     return () => clearInterval(interval);
   }, [state.isProcessing]);
 
-  const incrementRequestCount = useCallback(() => {
+  const incrementUsage = useCallback(() => {
     setState(prev => {
       const newDailyCount = prev.dailyRequestCount + 1;
       const today = new Date().toISOString().split('T')[0];
-      localStorage.setItem('qed_daily_requests', JSON.stringify({ date: today, count: newDailyCount }));
+      localStorage.setItem('qed_daily_usage', JSON.stringify({ date: today, count: newDailyCount }));
       return {
         ...prev,
         sessionRequestCount: prev.sessionRequestCount + 1,
@@ -74,8 +74,7 @@ export const useDigitization = () => {
       progress: 0,
       results: [],
       error: null,
-      statusMessage: 'Reading file...',
-      sessionRequestCount: 0
+      statusMessage: 'Reading file...'
     }));
 
     try {
@@ -100,12 +99,12 @@ export const useDigitization = () => {
             statusMessage: `Digitizing Pages ${batchIndices.map(i => i + 1).join(', ')} of ${totalPages}...`,
           }));
 
-          incrementRequestCount();
           const batchResponses = await convertBatchToHtml(batchImages, languageLevel);
+          incrementUsage();
 
           for (let k = 0; k < batchIndices.length; k++) {
             const i = batchIndices[k];
-            const geminiResponse = batchResponses[k];
+            const geminiResponse = batchResponses.pages[k];
             
             if (!geminiResponse) continue;
 
@@ -229,8 +228,8 @@ export const useDigitization = () => {
     setIsRefining(true);
     try {
       const page = state.results[activeTab];
-      incrementRequestCount();
-      const refinedHtml = await refineLatex(page.html);
+      const { html: refinedHtml } = await refineLatex(page.html);
+      incrementUsage();
       
       const newResults = [...state.results];
       newResults[activeTab] = { ...page, html: refinedHtml };
@@ -309,7 +308,7 @@ export const useDigitization = () => {
     handleFileUpload,
     handleRefineMath,
     saveEditedFigures,
-    incrementRequestCount,
+    incrementUsage,
     reset
   };
 };

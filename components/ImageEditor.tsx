@@ -37,7 +37,7 @@ interface ImageEditorProps {
   figures: FigureToEdit[];
   onSave: (updates: { figureId: string, pageIndex: number, newSrc: string, newAlt?: string, newWidth?: string, newAlignment?: 'left' | 'center' | 'right' }[]) => void;
   onClose: () => void;
-  onApiCall?: () => void;
+  onApiCall?: (tokens?: number) => void;
 }
 
 const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose, onApiCall }) => {
@@ -264,8 +264,8 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose, onA
       
       for (const fig of targets) {
         const srcToUse = updates[fig.id] || fig.src;
-        onApiCall?.();
-        const newSrc = await recreateFigure(srcToUse, fig.alt);
+        const { result: newSrc, tokenCount } = await recreateFigure(srcToUse, fig.alt);
+        onApiCall?.(tokenCount);
         newRecreated[fig.id] = newSrc;
         updates[fig.id] = newSrc;
       }
@@ -289,8 +289,8 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose, onA
     setIsDescribing(true);
     try {
       const srcToUse = editedSrcs[currentFigure.id] || currentFigure.src;
-      onApiCall?.();
-      const newDescription = await describeFigure(srcToUse);
+      const { result: newDescription, tokenCount } = await describeFigure(srcToUse);
+      onApiCall?.(tokenCount);
       setAltTexts(prev => ({ ...prev, [currentFigure.id]: newDescription }));
     } catch (error) {
       console.error('Description regeneration failed:', error);
@@ -307,8 +307,8 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose, onA
     }
     setIsGeneratingGraph(true);
     try {
-      onApiCall?.();
-      const newSrc = await generateGraph(equations);
+      const { result: newSrc, tokenCount } = await generateGraph(equations);
+      onApiCall?.(tokenCount);
       setEditedSrcs(prev => ({ ...prev, [currentFigure.id]: newSrc }));
       setAdjustments(prev => ({
         ...prev,
@@ -331,8 +331,8 @@ const ImageEditor: React.FC<ImageEditorProps> = ({ figures, onSave, onClose, onA
     setIsPromptRecreating(true);
     try {
       const srcToUse = editedSrcs[currentFigure.id] || currentFigure.src;
-      onApiCall?.();
-      const newSrc = await touchUpImage(srcToUse, aiPrompt);
+      const { result: newSrc, tokenCount } = await touchUpImage(srcToUse, aiPrompt);
+      onApiCall?.(tokenCount);
       setEditedSrcs(prev => ({ ...prev, [currentFigure.id]: newSrc }));
       setAdjustments(prev => ({
         ...prev,

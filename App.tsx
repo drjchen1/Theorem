@@ -19,7 +19,7 @@ const App: React.FC = () => {
     handleFileUpload,
     handleRefineMath,
     saveEditedFigures,
-    incrementRequestCount,
+    incrementUsage,
     reset
   } = useDigitization();
 
@@ -579,15 +579,14 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-white">
-      <Header onShowDocs={() => setShowHelp(true)} />
+      {(state.results.length > 0 || state.isProcessing) && (
+        <Header onShowDocs={() => setShowHelp(true)} />
+      )}
       
       {state.isProcessing && (
         <ProcessingOverlay 
           progress={state.progress} 
           status={state.statusMessage} 
-          elapsedTime={elapsedTime} 
-          sessionRequestCount={state.sessionRequestCount}
-          dailyRequestCount={state.dailyRequestCount}
         />
       )}
 
@@ -641,7 +640,7 @@ const App: React.FC = () => {
               setEditingFigures(null);
             }}
             onClose={() => setEditingFigures(null)}
-            onApiCall={incrementRequestCount}
+            onApiCall={incrementUsage}
           />
         )}
       </AnimatePresence>
@@ -670,6 +669,7 @@ const App: React.FC = () => {
           <Dashboard 
             onFileUpload={handleFileUpload} 
             isProcessing={state.isProcessing} 
+            onShowDocs={() => setShowHelp(true)}
           />
         ) : (
           <ResultsView 

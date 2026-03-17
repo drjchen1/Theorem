@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
-import { GeminiPageResponse, LanguageLevel } from "../types";
+import { GeminiPageResponse, LanguageLevel, BatchResponse } from "../types";
 
 const getSystemInstruction = (level: LanguageLevel) => {
   let adaptationInstruction = "";
@@ -74,7 +74,7 @@ CRITICAL: Do not include any internal monologue, reasoning, or "thinking" proces
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-async function callGeminiWithRetry(base64Image: string, pageNumber: number, level: LanguageLevel = 'faithful', retries = 5): Promise<string> {
+async function callGeminiWithRetry(base64Image: string, pageNumber: number, level: LanguageLevel = 'faithful', retries = 5): Promise<{text: string, tokenCount: number}> {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   
   for (let i = 0; i < retries; i++) {
@@ -131,7 +131,7 @@ async function callGeminiWithRetry(base64Image: string, pageNumber: number, leve
         cleanJson = cleanJson.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
       }
       
-      return cleanJson;
+      return { text: cleanJson, tokenCount: response.usageMetadata?.totalTokenCount || 0 };
     } catch (error: any) {
       const isRateLimit = error.message?.includes('429') || error.message?.toLowerCase().includes('rate limit');
       
@@ -147,7 +147,7 @@ async function callGeminiWithRetry(base64Image: string, pageNumber: number, leve
   throw new Error("Max retries exceeded");
 }
 
-async function callBatchGeminiWithRetry(images: { base64: string, pageNumber: number }[], level: LanguageLevel = 'faithful', retries = 5): Promise<string> {
+async function callBatchGeminiWithRetry(images: { base64: string, pageNumber: number }[], level: LanguageLevel = 'faithful', retries = 5): Promise<{text: string, tokenCount: number}> {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   
   for (let i = 0; i < retries; i++) {
@@ -216,7 +216,7 @@ async function callBatchGeminiWithRetry(images: { base64: string, pageNumber: nu
         cleanJson = cleanJson.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
       }
       
-      return cleanJson;
+      return { text: cleanJson, tokenCount: response.usageMetadata?.totalTokenCount || 0 };
     } catch (error: any) {
       const isRateLimit = error.message?.includes('429') || error.message?.toLowerCase().includes('rate limit');
       
@@ -232,23 +232,24 @@ async function callBatchGeminiWithRetry(images: { base64: string, pageNumber: nu
   throw new Error("Max retries exceeded");
 }
 
-export const convertBatchToHtml = async (images: { base64: string, pageNumber: number }[], level: LanguageLevel = 'faithful'): Promise<GeminiPageResponse[]> => {
-  let jsonStr = "";
+export const convertBatchToHtml = async (images: { base64: string, pageNumber: number }[], level: LanguageLevel = 'faithful'): Promise<BatchResponse> => {
+  let result = { text: "", tokenCount: 0 };
   try {
-    jsonStr = await callBatchGeminiWithRetry(images, level);
-    const parsed = JSON.parse(jsonStr);
-    return parsed.pages as GeminiPageResponse[];
+    result = await callBatchGeminiWithRetry(images, level);
+    const parsed = JSON.parse(result.text);
+    return { pages: parsed.pages as GeminiPageResponse[], tokenCount: result.tokenCount };
   } catch (error: any) {
     console.error('Gemini Batch API Error:', error);
     throw new Error(`Failed to process batch: ${error.message}`);
   }
 };
 
-export const convertPageToHtml = async (base64Image: string, pageNumber: number, level: LanguageLevel = 'faithful'): Promise<GeminiPageResponse> => {
+export const convertPageToHtml = async (base64Image: string, pageNumber: number, level: LanguageLevel = 'faithful'): Promise<{page: GeminiPageResponse, tokenCount: number}> => {
   let jsonStr = "";
   try {
-    jsonStr = await callGeminiWithRetry(base64Image, pageNumber, level);
-    return JSON.parse(jsonStr) as GeminiPageResponse;
+    const result = await callGeminiWithRetry(base64Image, pageNumber, level);
+    jsonStr = result.text;
+    return { page: JSON.parse(jsonStr) as GeminiPageResponse, tokenCount: result.tokenCount };
   } catch (error: any) {
     console.error('Gemini API Error:', error);
     if (jsonStr) {
@@ -259,7 +260,7 @@ export const convertPageToHtml = async (base64Image: string, pageNumber: number,
   }
 };
 
-export const refineLatex = async (html: string): Promise<string> => {
+export const refineLatex = async (html: string): Promise<{html: string, tokenCount: number}> => {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   try {
     const response = await ai.models.generateContent({
@@ -291,14 +292,14 @@ export const refineLatex = async (html: string): Promise<string> => {
       }
     });
 
-    return response.text?.trim() || html;
+    return { html: response.text?.trim() || html, tokenCount: response.usageMetadata?.totalTokenCount || 0 };
   } catch (error: any) {
     console.error('Latex refinement error:', error);
-    return html; // Fallback to original if refinement fails
+    return { html, tokenCount: 0 }; // Fallback to original if refinement fails
   }
 };
 
-export const recreateFigure = async (base64Image: string, alt: string): Promise<string> => {
+export const recreateFigure = async (base64Image: string, alt: string): Promise<{result: string, tokenCount: number}> => {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   try {
     const response = await ai.models.generateContent({
@@ -329,14 +330,14 @@ export const recreateFigure = async (base64Image: string, alt: string): Promise<
     }
 
     if (!recreatedBase64) throw new Error("No image returned from Gemini");
-    return recreatedBase64;
+    return { result: recreatedBase64, tokenCount: response.usageMetadata?.totalTokenCount || 0 };
   } catch (error: any) {
     console.error('Recreation error:', error);
     throw error;
   }
 };
 
-export const describeFigure = async (base64Image: string): Promise<string> => {
+export const describeFigure = async (base64Image: string): Promise<{result: string, tokenCount: number}> => {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   try {
     const response = await ai.models.generateContent({
@@ -362,14 +363,14 @@ export const describeFigure = async (base64Image: string): Promise<string> => {
       }
     });
 
-    return response.text?.trim() || "";
+    return { result: response.text?.trim() || "", tokenCount: response.usageMetadata?.totalTokenCount || 0 };
   } catch (error: any) {
     console.error('Description error:', error);
     throw error;
   }
 };
 
-export const generateGraph = async (equations: string): Promise<string> => {
+export const generateGraph = async (equations: string): Promise<{result: string, tokenCount: number}> => {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   try {
     const response = await ai.models.generateContent({
@@ -406,14 +407,14 @@ export const generateGraph = async (equations: string): Promise<string> => {
     }
 
     if (!graphBase64) throw new Error("No image returned from Gemini");
-    return graphBase64;
+    return { result: graphBase64, tokenCount: response.usageMetadata?.totalTokenCount || 0 };
   } catch (error: any) {
     console.error('Graph generation error:', error);
     throw error;
   }
 };
 
-export const touchUpImage = async (base64Image: string, prompt: string): Promise<string> => {
+export const touchUpImage = async (base64Image: string, prompt: string): Promise<{result: string, tokenCount: number}> => {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   try {
     const response = await ai.models.generateContent({
@@ -442,7 +443,7 @@ export const touchUpImage = async (base64Image: string, prompt: string): Promise
     }
 
     if (!enhancedBase64) throw new Error("No image returned from Gemini");
-    return enhancedBase64;
+    return { result: enhancedBase64, tokenCount: response.usageMetadata?.totalTokenCount || 0 };
   } catch (error: any) {
     console.error('Touch up error:', error);
     throw error;

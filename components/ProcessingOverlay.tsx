@@ -6,9 +6,6 @@ import { Scan, FileText, Sparkles, Binary, FunctionSquare, Sigma } from 'lucide-
 interface ProcessingOverlayProps {
   progress: number;
   status: string;
-  elapsedTime?: number;
-  sessionRequestCount?: number;
-  dailyRequestCount?: number;
 }
 
 const FloatingMath = () => {
@@ -44,8 +41,7 @@ const FloatingMath = () => {
   );
 };
 
-const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({ progress, status, elapsedTime, sessionRequestCount, dailyRequestCount }) => {
-  const rpm = elapsedTime && sessionRequestCount ? Math.round((sessionRequestCount / (elapsedTime / 60)) * 10) / 10 : 0;
+const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({ progress, status }) => {
   return (
     <div className="fixed inset-0 bg-white z-50 flex flex-col items-center justify-center p-6 text-center overflow-hidden">
       {/* Immersive background */}
@@ -57,12 +53,12 @@ const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({ progress, status,
       <motion.div 
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="relative z-10 bg-white/80 backdrop-blur-3xl rounded-[4rem] p-16 max-w-xl w-full border border-slate-200 shadow-2xl"
+        className="relative z-10 bg-white/80 backdrop-blur-3xl rounded-[3rem] p-12 max-w-md w-full border border-slate-200 shadow-2xl"
       >
         <FloatingMath />
         
         <div className="relative z-10">
-          <div className="mb-12 flex justify-center">
+          <div className="mb-8 flex justify-center">
             <div className="relative w-48 h-48 flex items-center justify-center">
               {/* Progress Ring SVG */}
               <svg className="absolute inset-0 w-full h-full -rotate-90">
@@ -113,7 +109,7 @@ const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({ progress, status,
             </div>
           </div>
           
-          <div className="space-y-4 mb-12">
+          <div className="space-y-4 mb-8">
             <h2 className="text-3xl font-black text-slate-900 tracking-tight">Q.E.D. Engine <span className="text-purdue italic serif">Active</span></h2>
             <div className="h-6 overflow-hidden flex justify-center">
               <AnimatePresence mode="wait">
@@ -130,7 +126,7 @@ const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({ progress, status,
             </div>
           </div>
           
-          <div className="grid grid-cols-3 gap-8 mb-12">
+          <div className="grid grid-cols-3 gap-6 mb-8">
             {[
               { label: 'Scan', icon: Scan, threshold: 0, next: 40 },
               { label: 'Parse', icon: Binary, threshold: 40, next: 80 },
@@ -157,11 +153,6 @@ const ProcessingOverlay: React.FC<ProcessingOverlayProps> = ({ progress, status,
                 </div>
               );
             })}
-          </div>
-          
-          <div className="flex items-center justify-center gap-6 text-slate-400 font-mono text-[10px] font-bold">
-            {elapsedTime !== undefined && <span>{elapsedTime}s elapsed</span>}
-            {rpm > 0 && <span>{rpm} RPM</span>}
           </div>
         </div>
       </motion.div>

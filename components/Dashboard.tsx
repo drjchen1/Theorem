@@ -1,17 +1,15 @@
 
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { LanguageLevel } from '../types';
-import { ChevronDown, Info } from 'lucide-react';
 
 interface DashboardProps {
   onFileUpload: (file: File, languageLevel: LanguageLevel) => void;
   isProcessing: boolean;
+  onShowDocs: () => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ onFileUpload, isProcessing }) => {
+const Dashboard: React.FC<DashboardProps> = ({ onFileUpload, isProcessing, onShowDocs }) => {
   const [languageLevel, setLanguageLevel] = useState<LanguageLevel>('faithful');
-  const [showTips, setShowTips] = useState(false);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -21,13 +19,32 @@ const Dashboard: React.FC<DashboardProps> = ({ onFileUpload, isProcessing }) => 
   };
 
   return (
-    <div className="w-fit mx-auto mt-8 md:mt-12 text-center p-8 md:p-10 border-2 border-dashed border-slate-200 rounded-[2rem] md:rounded-[2.5rem]">
-      <div className="mx-auto">
-        <h2 className="text-3xl md:text-5xl font-black text-slate-900 tracking-tight mb-6 md:mb-8 whitespace-normal md:whitespace-nowrap">
+    <div className="flex flex-col items-center justify-center min-h-[80vh] w-full px-4">
+      {/* 1. Top: Q.E.D. Title and Chenflix badge */}
+      <div className="flex flex-col items-center mb-12">
+        <h1 className="text-2xl md:text-4xl font-black text-slate-900 tracking-tighter text-center">
+          Q.E.<span className="text-purdue">D.</span> <span className="font-bold md:font-black text-slate-500 md:text-slate-900">&nbsp; (Quod Erat <span className="italic font-black text-purdue pr-1">Digitandum</span>)</span>
+        </h1>
+        <div className="flex items-center gap-2 mt-2">
+          <span className="text-[8px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">As Seen on</span>
+          <a 
+            href="https://drjchen1.github.io/chenflix/" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-[10px] md:text-[12px] font-black text-[#E50914] tracking-tighter transform scale-y-110 inline-block drop-shadow-[0_1px_1px_rgba(0,0,0,0.1)] hover:opacity-80 transition-opacity"
+          >
+            CHENFLIX
+          </a>
+        </div>
+      </div>
+
+      {/* 3. The Card */}
+      <div className="w-full max-w-lg text-center p-8 md:p-12 border-2 border-dashed border-slate-200 rounded-[2rem] md:rounded-[2.5rem] bg-white">
+        <h2 className="text-3xl md:text-5xl font-black text-slate-900 tracking-tight mb-8 whitespace-normal md:whitespace-nowrap">
           Ready to <span className="text-purdue" style={{ fontFamily: "'Pixelify Sans', sans-serif", fontWeight: 700, fontSize: '1.05em', verticalAlign: 'baseline', display: 'inline-block', transform: 'translateY(0.02em)' }}>Digitize.</span>
         </h2>
         
-        <div className="mb-6 md:mb-8 flex flex-col items-center">
+        <div className="mb-8 flex flex-col items-center">
           <div className="inline-flex items-center p-0.5 bg-slate-100 rounded-full border border-slate-200 shadow-inner">
             {(['faithful', 'natural', 'fleshed_out'] as const).map((level) => (
               <button
@@ -43,17 +60,23 @@ const Dashboard: React.FC<DashboardProps> = ({ onFileUpload, isProcessing }) => 
               </button>
             ))}
           </div>
-          <p className="mt-3 text-[8px] md:text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+          <p className="mt-4 text-[8px] md:text-[10px] font-bold text-slate-500 uppercase tracking-widest">
             {languageLevel === 'faithful' ? 'Exact Transcription' : languageLevel === 'natural' ? 'Natural Sentences' : 'Detailed Explanations'}
           </p>
         </div>
 
         <div>
-          <label className="inline-flex items-center gap-3 md:gap-4 px-8 md:px-12 py-4 md:py-6 bg-purdue hover:brightness-95 text-black font-bold rounded-xl md:rounded-2xl shadow-xl transition-all cursor-pointer">
+          <label className="inline-flex items-center justify-center w-full sm:w-auto px-8 md:px-12 py-4 md:py-5 bg-purdue hover:brightness-95 text-black font-bold rounded-xl md:rounded-2xl shadow-xl transition-all cursor-pointer">
             <span className="text-sm md:text-base">Upload File</span>
             <input type="file" className="sr-only" accept="application/pdf,image/*,.heic,.heif,.txt" onChange={handleFileChange} disabled={isProcessing} />
           </label>
         </div>
+      </div>
+
+      {/* 5. Bottom Links */}
+      <div className="mt-12 flex items-center justify-center gap-6 md:gap-10 text-[11px] md:text-sm font-black text-slate-400 uppercase tracking-widest">
+        <button onClick={onShowDocs} className="hover:text-purdue transition-colors">How to Use</button>
+        <a href="https://www.w3.org/WAI/standards-guidelines/wcag/" target="_blank" rel="noopener noreferrer" className="hover:text-purdue transition-colors">WCAG 2.2 AA</a>
       </div>
     </div>
   );

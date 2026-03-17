@@ -12,6 +12,20 @@ export interface GeminiPageResponse {
   figures: Figure[];
 }
 
+export interface BatchResponse {
+  pages: GeminiPageResponse[];
+  tokenCount: number;
+}
+
+declare global {
+  interface Window {
+    aistudio?: {
+      hasSelectedApiKey: () => Promise<boolean>;
+      openSelectKey: () => Promise<void>;
+    };
+  }
+}
+
 export interface AccessibilityAudit {
   score: number;
   checks: {
