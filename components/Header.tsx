@@ -10,12 +10,12 @@ const Header: React.FC<HeaderProps> = ({ onShowDocs }) => {
     <header className="bg-white/80 backdrop-blur-md border-b border-slate-100 sticky top-0 z-40">
       <div className="max-w-[1800px] mx-auto px-4 md:px-6 h-20 flex items-center justify-between">
         <div className="flex items-center gap-2 md:gap-3">
-          <div className="bg-slate-900 text-purdue w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-xl md:rounded-2xl shadow-lg shadow-slate-200 flex-shrink-0">
+          <div className="bg-slate-900 text-purdue w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-lg md:rounded-xl shadow-lg shadow-slate-200 flex-shrink-0">
             <span className="text-xl md:text-2xl font-serif italic font-bold leading-none select-none transform -translate-y-0.5">Q</span>
           </div>
           <div className="flex flex-col min-w-0">
             <h1 className="text-base md:text-2xl font-black text-slate-900 tracking-tighter truncate md:whitespace-normal pr-2">
-              Q.E.D. <span className="font-bold md:font-black text-slate-500 md:text-slate-900">&nbsp; (Quod Erat <span className="italic font-black text-purdue pr-1">Digitandum</span>)</span>
+              Q.E.D. <span className="font-bold text-slate-500">&nbsp; (Quod Erat <span className="italic font-black text-purdue pr-1">Digitandum</span>)</span>
             </h1>
             <div className="flex items-center gap-1.5 -mt-0.5 md:-mt-1">
               <span className="text-[6px] md:text-[7px] font-black text-slate-400 uppercase tracking-widest">As Seen on</span>

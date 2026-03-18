@@ -666,11 +666,18 @@ const App: React.FC = () => {
         )}
 
         {!state.results.length && !state.isProcessing ? (
-          <Dashboard 
-            onFileUpload={handleFileUpload} 
-            isProcessing={state.isProcessing} 
-            onShowDocs={() => setShowHelp(true)}
-          />
+          <>
+            <Dashboard 
+              onFileUpload={handleFileUpload} 
+              isProcessing={state.isProcessing} 
+              onShowDocs={() => setShowHelp(true)}
+            />
+            <footer className="fixed bottom-6 left-0 right-0 flex justify-center pointer-events-none select-none z-0">
+              <div className="text-[9px] font-mono text-slate-400 uppercase tracking-[0.3em]">
+                © 2026 KUAN-HUA CHEN // LIBERATED LOGIC // MODIFY AT WILL
+              </div>
+            </footer>
+          </>
         ) : (
           <ResultsView 
             results={state.results}
@@ -688,10 +695,6 @@ const App: React.FC = () => {
           />
         )}
       </main>
-
-      <div className="fixed bottom-4 right-4 text-[7px] md:text-[9px] font-black text-slate-300 uppercase tracking-widest pointer-events-none select-none z-0">
-        V0.99P | {__BUILD_DATE__}
-      </div>
 
       <style>{`
         .notebox {

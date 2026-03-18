@@ -21,20 +21,25 @@ const Dashboard: React.FC<DashboardProps> = ({ onFileUpload, isProcessing, onSho
   return (
     <div className="flex flex-col items-center justify-center min-h-[80vh] w-full px-4">
       {/* 1. Top: Q.E.D. Title and Chenflix badge */}
-      <div className="flex flex-col items-center mb-12">
-        <h1 className="text-2xl md:text-4xl font-black text-slate-900 tracking-tighter text-center">
-          Q.E.<span className="text-purdue">D.</span> <span className="font-bold md:font-black text-slate-500 md:text-slate-900">&nbsp; (Quod Erat <span className="italic font-black text-purdue pr-1">Digitandum</span>)</span>
-        </h1>
-        <div className="flex items-center gap-2 mt-2">
-          <span className="text-[8px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">As Seen on</span>
-          <a 
-            href="https://drjchen1.github.io/chenflix/" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="text-[10px] md:text-[12px] font-black text-[#E50914] tracking-tighter transform scale-y-110 inline-block drop-shadow-[0_1px_1px_rgba(0,0,0,0.1)] hover:opacity-80 transition-opacity"
-          >
-            CHENFLIX
-          </a>
+      <div className="flex items-center gap-4 md:gap-6 mb-12">
+        <div className="bg-slate-900 text-purdue w-12 h-12 md:w-16 md:h-16 flex items-center justify-center rounded-xl md:rounded-2xl shadow-xl shadow-slate-200 flex-shrink-0">
+          <span className="text-3xl md:text-4xl font-serif italic font-bold leading-none select-none transform -translate-y-1">Q</span>
+        </div>
+        <div className="flex flex-col">
+          <h1 className="text-2xl md:text-4xl font-black text-slate-900 tracking-tighter">
+            Q.E.D. <span className="font-bold text-slate-500">&nbsp; (Quod Erat <span className="italic font-black text-purdue pr-1">Digitandum</span>)</span>
+          </h1>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-[8px] md:text-[10px] font-black text-slate-400 uppercase tracking-widest">As Seen on</span>
+            <a 
+              href="https://drjchen1.github.io/chenflix/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-[10px] md:text-[12px] font-black text-[#E50914] tracking-tighter transform scale-y-110 inline-block drop-shadow-[0_1px_1px_rgba(0,0,0,0.1)] hover:opacity-80 transition-opacity"
+            >
+              CHENFLIX
+            </a>
+          </div>
         </div>
       </div>
 
