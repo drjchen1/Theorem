@@ -117,6 +117,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onFileUpload, isProcessing, onSho
       <div className="mt-12 flex items-center justify-center gap-6 md:gap-10 text-[11px] md:text-sm font-black text-slate-400 uppercase tracking-widest">
         <button onClick={onShowDocs} className="hover:text-purdue transition-colors">How to Use</button>
         <a href="https://www.w3.org/WAI/standards-guidelines/wcag/" target="_blank" rel="noopener noreferrer" className="hover:text-purdue transition-colors">WCAG 2.2 AA</a>
+        <span className="select-none opacity-50">v1.0.0</span>
       </div>
     </div>
   );
