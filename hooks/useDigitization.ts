@@ -179,9 +179,11 @@ export const useDigitization = () => {
         batches.push(batch);
       }
 
-      const pool = [];
+      const pool: Promise<any>[] = [];
       for (const batch of batches) {
-        const p = processBatch(batch);
+        const p = processBatch(batch).finally(() => {
+          pool.splice(pool.indexOf(p), 1);
+        });
         pool.push(p);
         if (pool.length >= CONCURRENCY_LIMIT) {
           await Promise.race(pool);

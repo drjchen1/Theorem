@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import Header from './components/Header';
 import ProcessingOverlay from './components/ProcessingOverlay';
@@ -30,6 +30,19 @@ const App: React.FC = () => {
   const [hasDownloaded, setHasDownloaded] = useState(false);
   const [showResetWarning, setShowResetWarning] = useState(false);
   const [editingFigures, setEditingFigures] = useState<{ id: string, src: string, originalSrc: string, alt: string, pageIndex: number }[] | null>(null);
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (state.results.length > 0 && !hasDownloaded) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [state.results.length, hasDownloaded]);
 
   const handleReset = () => {
     if (state.results.length > 0 && !hasDownloaded) {
